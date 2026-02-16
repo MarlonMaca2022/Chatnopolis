@@ -1,0 +1,22 @@
+[
+    {
+        "id": "general",
+        "name": "General",
+        "createdBy": "system"
+    },
+    {
+        "id": "tecnologia",
+        "name": "Tecnología",
+        "createdBy": "system"
+    },
+    {
+        "id": "musica",
+        "name": "Música",
+        "createdBy": "system"
+    },
+    {
+        "id": "cine",
+        "name": "Cine y TV",
+        "createdBy": "system"
+    }
+]

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatnopolis - Sala de Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body class="bg-brand-50 h-screen overflow-hidden flex font-sans text-slate-800">
+
+    <!-- Sidebar -->
+    <aside class="w-80 bg-white border-r border-slate-200 flex flex-col hidden md:flex">
+        <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-brand-900">Chatnopolis</h2>
+            <!-- Admin Trigger -->
+            <button id="admin-panel-btn" class="text-slate-400 hover:text-amber-600 transition hidden"
+                title="Panel de Administración">
+                <i class="fas fa-shield-alt"></i>
+            </button>
+        </div>
+
+        <div class="p-4 flex-1 overflow-y-auto">
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Sala Actual</h3>
+            <button id="main-room-btn"
+                class="w-full bg-brand-50 text-brand-700 px-4 py-3 rounded-lg font-medium flex justify-between items-center mb-6 hover:bg-brand-100 transition shadow-sm border border-brand-200">
+                <span id="current-room-name"># General</span>
+                <i class="fas fa-chevron-right text-xs opacity-50"></i>
+            </button>
+
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Mensajes Directos</h3>
+            <ul class="space-y-1 mb-6" id="dm-list">
+                <!-- DM contacts injected here -->
+            </ul>
+
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Usuarios en Línea (<span
+                    id="user-count">0</span>)</h3>
+            <ul class="space-y-3" id="user-list">
+                <!-- User Items -->
+            </ul>
+        </div>
+
+        <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div
+                    class="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold overflow-hidden">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-brand-900 truncate max-w-[100px]" id="current-username">User
+                    </p>
+                    <p class="text-xs text-green-600">En línea</p>
+                </div>
+            </div>
+            <!-- Logout Button -->
+            <button id="logout-btn" class="p-2 text-slate-400 hover:text-red-500 transition" title="Cerrar Sesión">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Chat -->
+    <main class="flex-1 flex flex-col relative bg-white/50">
+        <!-- Mobile Header -->
+        <header class="md:hidden h-16 bg-white border-b border-slate-200 flex items-center px-4 justify-between">
+            <button class="text-slate-500 hover:text-brand-600">
+                <i class="fas fa-bars text-xl"></i>
+            </button>
+            <h2 class="font-bold text-lg text-brand-900" id="mobile-room-name"># General</h2>
+            <button id="mobile-logout-btn" class="text-slate-400 hover:text-red-500">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </header>
+
+        <!-- Messages -->
+        <div id="messages" class="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 scroll-smooth">
+            <!-- Messages injected here -->
+        </div>
+
+        <!-- Input -->
+        <div class="p-4 bg-white border-t border-slate-200">
+            <form id="chat-form" class="max-w-4xl mx-auto relative flex items-center gap-2">
+                <input type="text" id="msg-input" placeholder="Escribe un mensaje..." autocomplete="off"
+                    class="flex-1 bg-slate-50 border-0 text-slate-900 text-sm rounded-full focus:ring-2 focus:ring-brand-500 block w-full p-3 px-4 shadow-inner transition-colors">
+                <button type="submit"
+                    class="p-3 bg-brand-500 hover:bg-brand-600 text-white rounded-full shadow-md transition transform hover:scale-105 active:scale-95">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <!-- Admin Modal Overlay -->
+    <div id="admin-modal"
+        class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-shield-alt text-amber-500 mr-2"></i>Panel
+                    de Administración</h3>
+                <button id="close-admin-modal" class="text-slate-400 hover:text-slate-600 transition"><i
+                        class="fas fa-times text-xl"></i></button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-8">
+                <!-- Room Management -->
+                <div>
+                    <h4 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b pb-2">Gestión de
+                        Salas</h4>
+                    <form id="create-room-form" class="flex gap-2 mb-4">
+                        <input type="text" id="new-room-name" placeholder="Nombre de nueva sala..."
+                            class="flex-1 px-3 py-2 border rounded-lg text-sm">
+                        <button type="submit"
+                            class="px-4 py-2 bg-brand-500 text-white rounded-lg text-sm hover:bg-brand-600">Crear</button>
+                    </form>
+                    <ul id="admin-room-list" class="space-y-2">
+                        <!-- Admin Room Items -->
+                    </ul>
+                </div>
+
+                <!-- User Management -->
+                <div>
+                    <h4 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b pb-2">Usuarios
+                        Registrados</h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-600">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th class="px-4 py-2">Usuario</th>
+                                    <th class="px-4 py-2">Estado</th>
+                                    <th class="px-4 py-2">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-user-list">
+                                <!-- Admin User Rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
