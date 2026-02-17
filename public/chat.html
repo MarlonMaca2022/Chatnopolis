@@ -29,8 +29,8 @@
 
 <body class="bg-brand-50 h-screen overflow-hidden flex font-sans text-slate-800">
 
-    <!-- Sidebar -->
-    <aside class="w-80 bg-white border-r border-slate-200 flex flex-col hidden md:flex">
+    <!-- Sidebar Left -->
+    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col hidden md:flex">
         <div class="p-6 border-b border-slate-100 flex items-center justify-between">
             <h2 class="text-xl font-bold text-brand-900">Chatnopolis</h2>
             <!-- Admin Trigger -->
@@ -51,12 +51,6 @@
             <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Mensajes Directos</h3>
             <ul class="space-y-1 mb-6" id="dm-list">
                 <!-- DM contacts injected here -->
-            </ul>
-
-            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Usuarios en Línea (<span
-                    id="user-count">0</span>)</h3>
-            <ul class="space-y-3" id="user-list">
-                <!-- User Items -->
             </ul>
         </div>
 
@@ -109,6 +103,19 @@
             </form>
         </div>
     </main>
+
+    <!-- Sidebar Right (Users) -->
+    <aside class="w-64 bg-white border-l border-slate-200 flex flex-col hidden md:flex">
+        <div class="p-6 border-b border-slate-100">
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Usuarios en Línea (<span
+                    id="user-count">0</span>)</h3>
+        </div>
+        <div class="p-4 flex-1 overflow-y-auto">
+            <ul class="space-y-3" id="user-list">
+                <!-- User Items -->
+            </ul>
+        </div>
+    </aside>
 
     <!-- Admin Modal Overlay -->
     <div id="admin-modal"
