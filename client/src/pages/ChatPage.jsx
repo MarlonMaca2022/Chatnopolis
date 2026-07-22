@@ -12,12 +12,15 @@ import AdminModal from '../components/AdminModal.jsx';
 export default function ChatPage() {
   const navigate = useNavigate();
   const session = useMemo(() => getSession(), []);
-  const roomId = session?.roomId || 'general';
+  const initialRoom = session?.roomId || 'general';
 
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const [chats, setChats] = useState({}); // { chatKey: [mensajes] }
-  const [activeView, setActiveView] = useState({ type: 'room', target: roomId });
+  const [roomId, setRoomId] = useState(initialRoom); // sala activa
+  const roomIdRef = useRef(roomId);
+  roomIdRef.current = roomId;
+  const [activeView, setActiveView] = useState({ type: 'room', target: initialRoom });
   const activeViewRef = useRef(activeView);
   activeViewRef.current = activeView;
 
@@ -82,7 +85,7 @@ export default function ChatPage() {
         key = data.from === session.username ? data.to : data.from;
         setDms((prev) => (prev.includes(key) ? prev : [...prev, key]));
       } else {
-        key = roomId;
+        key = roomIdRef.current;
       }
 
       setChats((prev) => ({ ...prev, [key]: [...(prev[key] || []), data] }));
@@ -122,11 +125,16 @@ export default function ChatPage() {
     setShowSidebar(false);
   }
 
-  function openRoom() {
-    setActiveView({ type: 'room', target: roomId });
+  function switchRoom(id) {
+    if (id !== roomId) {
+      // El servidor sale de la sala anterior, entra a la nueva y reenvía historial
+      socketRef.current?.emit('join', { room: id });
+      setRoomId(id);
+    }
+    setActiveView({ type: 'room', target: id });
     setUnread((prev) => {
       const next = new Set(prev);
-      next.delete(roomId);
+      next.delete(id);
       return next;
     });
     setShowSidebar(false);
@@ -175,21 +183,31 @@ export default function ChatPage() {
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Sala Actual</h3>
-        <button
-          onClick={openRoom}
-          className={`w-full px-4 py-3 rounded-lg font-medium flex justify-between items-center mb-6 transition shadow-sm border ${
-            activeView.type === 'room'
-              ? 'bg-brand-50 text-brand-700 border-brand-200'
-              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <Hash size={14} /> {roomsMap[roomId] || roomId}
-            {unread.has(roomId) && <span className="w-2 h-2 bg-rose-500 rounded-full" />}
-          </span>
-          <ChevronRight size={12} className="opacity-50" />
-        </button>
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Salas</h3>
+        <ul className="space-y-1 mb-6">
+          {Object.entries(roomsMap).map(([id, name]) => {
+            const isActive = activeView.type === 'room' && roomId === id;
+            return (
+              <li key={id}>
+                <button
+                  onClick={() => switchRoom(id)}
+                  className={`w-full px-4 py-3 rounded-lg font-medium flex justify-between items-center transition shadow-sm border ${
+                    isActive
+                      ? 'bg-brand-50 text-brand-700 border-brand-200'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <Hash size={14} className="shrink-0" />
+                    <span className="truncate">{name}</span>
+                    {unread.has(id) && <span className="w-2 h-2 bg-rose-500 rounded-full shrink-0" />}
+                  </span>
+                  {isActive && <ChevronRight size={12} className="opacity-50 shrink-0" />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
 
         <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Mensajes Directos</h3>
         <ul className="space-y-1 mb-6">

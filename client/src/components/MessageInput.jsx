@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { Image, Send, X } from 'lucide-react';
+import { Image, Send, Smile, X } from 'lucide-react';
+import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 import { api } from '../lib/api';
 
 export default function MessageInput({ onSend }) {
@@ -8,8 +9,27 @@ export default function MessageInput({ onSend }) {
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [showEmoji, setShowEmoji] = useState(false);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
+
+  function insertEmoji(emoji) {
+    const input = inputRef.current;
+    const start = input?.selectionStart;
+    const end = input?.selectionEnd;
+    if (input && start != null && end != null) {
+      const next = text.slice(0, start) + emoji + text.slice(end);
+      setText(next);
+      // Reposiciona el cursor justo después del emoji insertado
+      requestAnimationFrame(() => {
+        input.focus();
+        const pos = start + emoji.length;
+        input.setSelectionRange(pos, pos);
+      });
+    } else {
+      setText((prev) => prev + emoji);
+    }
+  }
 
   function pickFile(e) {
     const picked = e.target.files?.[0];
@@ -73,6 +93,23 @@ export default function MessageInput({ onSend }) {
       {error && <p className="max-w-4xl mx-auto mb-2 text-xs text-red-500">{error}</p>}
 
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative flex items-center gap-2">
+        {showEmoji && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setShowEmoji(false)} />
+            <div className="absolute bottom-full left-0 mb-2 z-50">
+              <EmojiPicker
+                onEmojiClick={(e) => insertEmoji(e.emoji)}
+                emojiStyle={EmojiStyle.NATIVE}
+                theme="light"
+                lazyLoadEmojis
+                width={320}
+                height={400}
+                searchPlaceholder="Buscar emoji…"
+                previewConfig={{ showPreview: false }}
+              />
+            </div>
+          </>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -80,6 +117,16 @@ export default function MessageInput({ onSend }) {
           className="hidden"
           onChange={pickFile}
         />
+        <button
+          type="button"
+          onClick={() => setShowEmoji((v) => !v)}
+          className={`p-3 rounded-full transition hover:bg-slate-50 ${
+            showEmoji ? 'text-brand-600' : 'text-slate-400 hover:text-brand-600'
+          }`}
+          title="Emojis"
+        >
+          <Smile size={20} />
+        </button>
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}

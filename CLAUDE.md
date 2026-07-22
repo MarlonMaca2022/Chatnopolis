@@ -5,7 +5,7 @@ Guía de arquitectura para retomar el proyecto rápido. Chat web en tiempo real 
 ## Stack
 
 - **Backend:** Node.js **≥22.5** + Express + Socket.IO. Usa el módulo nativo `node:sqlite` (por eso exige Node 22.5+, no `better-sqlite3`).
-- **Frontend:** React (Vite + Tailwind v4), icons con `lucide-react`.
+- **Frontend:** React (Vite + Tailwind v4), icons con `lucide-react`, selector de emojis con `emoji-picker-react` (modo `native`, sin imágenes de CDN).
 - **Auth:** contraseñas con `bcryptjs`, sesión con JWT (`jsonwebtoken`).
 - **Subida de archivos:** `multer` (disk storage).
 
@@ -54,6 +54,8 @@ SQLite en `data/chat.db` (WAL). Tablas: `users`, `rooms`, `messages` (sala **o**
 
 ## Convenciones / notas
 
+- **Cambio de sala:** una sala activa a la vez. El sidebar (`ChatPage.jsx`) lista todas las salas de `roomsMap`; al hacer clic, el cliente emite `join` y el servidor sale de la sala anterior, entra a la nueva y reenvía el historial. El servidor **ya soportaba** esto — no requiere cambios en `server/`. `roomId` es estado con un `roomIdRef` para que el handler `message` (registrado una sola vez) enrute al valor actual.
+- **Emojis:** botón 😊 en `MessageInput.jsx` abre un popover con `emoji-picker-react`; el emoji se inserta en la posición del cursor y viaja como texto normal (sin cambios en servidor ni base de datos).
 - El rol de admin se valida **en el servidor** tanto en REST (`requireAdmin`) como en socket — nunca confiar en el flag del cliente.
 - El fetch wrapper (`client/src/lib/api.js`) adjunta `Authorization: Bearer <token>` y serializa JSON salvo cuando el body es `FormData` (upload).
 - Deploy en VPS (nginx + pm2 + HTTPS + backups): ver **DEPLOY.md**.
