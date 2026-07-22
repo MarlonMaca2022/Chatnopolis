@@ -1,0 +1,8 @@
+node_modules/
+client/node_modules/
+client/dist/
+uploads/
+data/chat.db
+data/chat.db-shm
+data/chat.db-wal
+.env
