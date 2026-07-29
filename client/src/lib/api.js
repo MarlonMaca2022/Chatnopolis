@@ -22,6 +22,10 @@ export const api = {
   createRoom: (name) => request('/rooms', { method: 'POST', body: { name } }),
   deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),
   getUsers: () => request('/users'),
+  unbanUser: (username) => request(`/users/${encodeURIComponent(username)}/unban`, { method: 'POST' }),
+  unmuteUser: (username) => request(`/users/${encodeURIComponent(username)}/unmute`, { method: 'POST' }),
+  getGuestBans: () => request('/guest-bans'),
+  unbanGuest: (username) => request(`/guest-bans/${encodeURIComponent(username)}`, { method: 'DELETE' }),
   uploadPhoto: (file) => {
     const form = new FormData();
     form.append('photo', file);

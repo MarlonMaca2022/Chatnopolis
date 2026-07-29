@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Lock, Shield } from 'lucide-react';
+import { ImageOff, Lock, Shield } from 'lucide-react';
 
 function formatTime(iso) {
   if (!iso) return 'Ahora';
@@ -23,7 +23,9 @@ function Message({ data, currentUsername }) {
       <div className="flex justify-center my-4">
         <span
           className={`px-4 py-1 rounded-full text-xs font-medium shadow-sm ${
-            data.type === 'system-error' ? 'bg-red-100 text-red-600' : 'bg-slate-200 text-slate-600'
+            data.type === 'system-error'
+              ? 'bg-red-100 text-red-600 dark:bg-red-400/15 dark:text-red-300'
+              : 'bg-muted text-ink-soft'
           }`}
         >
           {data.text}
@@ -33,21 +35,21 @@ function Message({ data, currentUsername }) {
   }
 
   let avatarColor = isMe
-    ? 'bg-brand-100 text-brand-600'
+    ? 'bg-accent-soft text-accent-ink'
     : isAdminMsg
-      ? 'bg-amber-100 text-amber-600'
-      : 'bg-indigo-100 text-indigo-600';
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300'
+      : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-300';
   let bubbleColor = isMe
-    ? 'bg-brand-500 text-white'
+    ? 'bg-accent text-white'
     : isAdminMsg
-      ? 'bg-amber-50 border border-amber-200 text-amber-900'
-      : 'bg-white text-slate-700 border border-slate-100';
+      ? 'bg-amber-50 border border-amber-200 text-amber-900 dark:bg-amber-400/10 dark:border-amber-400/25 dark:text-amber-100'
+      : 'bg-surface text-ink border border-edge';
 
   if (isPrivate) {
-    avatarColor = 'bg-rose-100 text-rose-600';
+    avatarColor = 'bg-rose-100 text-rose-600 dark:bg-rose-400/15 dark:text-rose-300';
     bubbleColor = isMe
-      ? 'bg-rose-500 text-white shadow-md'
-      : 'bg-rose-50 border border-rose-100 text-rose-900';
+      ? 'bg-rose-500 text-white shadow-md dark:bg-rose-600'
+      : 'bg-rose-50 border border-rose-100 text-rose-900 dark:bg-rose-400/10 dark:border-rose-400/25 dark:text-rose-100';
   }
 
   return (
@@ -61,19 +63,28 @@ function Message({ data, currentUsername }) {
         <div className={`flex items-baseline gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
           <span
             className={`text-sm font-semibold flex items-center gap-1 ${
-              isMe ? 'text-brand-900' : isAdminMsg ? 'text-amber-700' : 'text-slate-900'
+              isMe
+                ? 'text-accent-ink'
+                : isAdminMsg
+                  ? 'text-amber-700 dark:text-amber-300'
+                  : 'text-ink'
             }`}
           >
             {data.username}
             {isAdminMsg && !isMe && <Shield size={12} className="text-amber-500" />}
           </span>
-          <span className="text-xs text-slate-400">{formatTime(data.createdAt)}</span>
+          <span className="text-xs text-ink-faint">{formatTime(data.createdAt)}</span>
         </div>
         <div
           className={`${bubbleColor} p-3 rounded-2xl ${
             isMe ? 'rounded-tr-none' : 'rounded-tl-none'
           } shadow-sm text-sm leading-relaxed`}
         >
+          {data.imageExpired && !data.imageUrl && (
+            <p className="flex items-center gap-1.5 text-xs opacity-60 italic mb-1">
+              <ImageOff size={12} className="shrink-0" /> Foto vencida
+            </p>
+          )}
           {data.imageUrl && (
             <a href={data.imageUrl} target="_blank" rel="noreferrer">
               <img
@@ -104,7 +115,7 @@ export default function MessageList({ messages, currentUsername }) {
   }, [messages]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-app">
       {messages.map((m, i) => (
         <Message key={i} data={m} currentUsername={currentUsername} />
       ))}

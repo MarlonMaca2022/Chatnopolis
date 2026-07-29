@@ -7,6 +7,8 @@ const { Server } = require('socket.io');
 
 const apiRoutes = require('./routes');
 const { setupSocket } = require('./socket');
+const { startCleanupJobs } = require('./cleanup');
+const { UPLOADS_DIR } = require('./uploads');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,7 +18,7 @@ app.set('io', io);
 app.use(express.json());
 
 app.use('/api', apiRoutes);
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // Frontend React compilado (client/dist) con fallback SPA
 const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
@@ -28,6 +30,7 @@ if (fs.existsSync(CLIENT_DIST)) {
 }
 
 setupSocket(io);
+startCleanupJobs();
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

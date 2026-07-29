@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { Hash, LogOut, Menu, Shield, User, ChevronRight } from 'lucide-react';
+import { Hash, LogOut, Menu, Shield, User, ChevronRight, Users } from 'lucide-react';
 import { getSession, clearSession } from '../lib/session';
 import { api } from '../lib/api';
 import MessageList from '../components/MessageList.jsx';
 import MessageInput from '../components/MessageInput.jsx';
 import UserList from '../components/UserList.jsx';
 import AdminModal from '../components/AdminModal.jsx';
+import ThemeToggle from '../components/ThemeToggle.jsx';
+
+const BAN_LABELS = { 10: '10 minutos', 60: '1 hora', 240: '4 horas' };
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -30,6 +33,7 @@ export default function ChatPage() {
   const [unread, setUnread] = useState(new Set());
   const [showAdmin, setShowAdmin] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showUsers, setShowUsers] = useState(false); // panel de usuarios en móvil
 
   const username = session?.username;
 
@@ -123,6 +127,7 @@ export default function ChatPage() {
       socketRef.current?.emit('dm:history', { withUser: target });
     }
     setShowSidebar(false);
+    setShowUsers(false);
   }
 
   function switchRoom(id) {
@@ -150,9 +155,22 @@ export default function ChatPage() {
     }
   }
 
-  function adminAction(action, targetUser) {
-    if (!window.confirm(`¿Estás seguro de ${action} a ${targetUser}?`)) return;
-    socketRef.current?.emit(`admin:${action}`, targetUser);
+  // durationMinutes solo aplica a 'ban' (null = permanente)
+  function adminAction(action, targetUser, durationMinutes = null) {
+    const isMuted = onlineUsers.find((u) => u.username === targetUser)?.isMuted;
+    const prompts = {
+      mute: isMuted ? `¿Quitar el silencio a ${targetUser}?` : `¿Silenciar a ${targetUser}?`,
+      kick: `¿Expulsar a ${targetUser}? Podrá volver a entrar enseguida.`,
+      ban: durationMinutes
+        ? `¿Banear a ${targetUser} por ${BAN_LABELS[durationMinutes]}?`
+        : `¿Banear a ${targetUser} de forma permanente?`,
+    };
+    if (!window.confirm(prompts[action])) return;
+
+    socketRef.current?.emit(
+      `admin:${action}`,
+      action === 'ban' ? { username: targetUser, durationMinutes } : targetUser
+    );
   }
 
   function logout() {
@@ -169,21 +187,24 @@ export default function ChatPage() {
 
   const sidebar = (
     <>
-      <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-        <h2 className="text-xl font-bold text-brand-900">Chatnopolis</h2>
-        {session.role === 'admin' && (
-          <button
-            onClick={() => setShowAdmin(true)}
-            className="text-slate-400 hover:text-amber-600 transition"
-            title="Panel de Administración"
-          >
-            <Shield size={18} />
-          </button>
-        )}
+      <div className="p-6 border-b border-edge flex items-center justify-between">
+        <h2 className="text-xl font-bold text-accent-ink">Chatnopolis</h2>
+        <div className="flex items-center gap-3">
+          {session.role === 'admin' && (
+            <button
+              onClick={() => setShowAdmin(true)}
+              className="text-ink-faint hover:text-amber-500 transition"
+              title="Panel de Administración"
+            >
+              <Shield size={18} />
+            </button>
+          )}
+          <ThemeToggle />
+        </div>
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Salas</h3>
+        <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider mb-4">Salas</h3>
         <ul className="space-y-1 mb-6">
           {Object.entries(roomsMap).map(([id, name]) => {
             const isActive = activeView.type === 'room' && roomId === id;
@@ -193,8 +214,8 @@ export default function ChatPage() {
                   onClick={() => switchRoom(id)}
                   className={`w-full px-4 py-3 rounded-lg font-medium flex justify-between items-center transition shadow-sm border ${
                     isActive
-                      ? 'bg-brand-50 text-brand-700 border-brand-200'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      ? 'bg-accent-soft text-accent-ink border-accent/40'
+                      : 'bg-surface text-ink-soft border-edge hover:bg-muted'
                   }`}
                 >
                   <span className="flex items-center gap-2 truncate">
@@ -209,7 +230,7 @@ export default function ChatPage() {
           })}
         </ul>
 
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Mensajes Directos</h3>
+        <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider mb-4">Mensajes Directos</h3>
         <ul className="space-y-1 mb-6">
           {dms.map((dmUser) => {
             const isActive = activeView.type === 'dm' && activeView.target === dmUser;
@@ -219,12 +240,12 @@ export default function ChatPage() {
                 onClick={() => openDM(dmUser)}
                 className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition ${
                   isActive
-                    ? 'bg-brand-100 text-brand-700 font-bold border border-brand-200 shadow-sm'
-                    : 'hover:bg-slate-50 text-slate-600'
+                    ? 'bg-accent-soft text-accent-ink font-bold border border-accent/40 shadow-sm'
+                    : 'hover:bg-muted text-ink-soft'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold">
+                  <div className="w-8 h-8 rounded-full bg-muted text-ink-soft flex items-center justify-center text-xs font-bold">
                     {dmUser.charAt(0).toUpperCase()}
                   </div>
                   <span className="truncate max-w-[120px]">{dmUser}</span>
@@ -236,17 +257,19 @@ export default function ChatPage() {
         </ul>
       </div>
 
-      <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+      <div className="p-4 border-t border-edge bg-app flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold">
+          <div className="w-10 h-10 rounded-full bg-accent-soft flex items-center justify-center text-accent-ink font-bold">
             <User size={18} />
           </div>
           <div>
-            <p className="text-sm font-semibold text-brand-900 truncate max-w-[100px]">{username}</p>
-            <p className="text-xs text-green-600">{connected ? 'En línea' : 'Conectando…'}</p>
+            <p className="text-sm font-semibold text-ink truncate max-w-[100px]">{username}</p>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+              {connected ? 'En línea' : 'Conectando…'}
+            </p>
           </div>
         </div>
-        <button onClick={logout} className="p-2 text-slate-400 hover:text-red-500 transition" title="Cerrar Sesión">
+        <button onClick={logout} className="p-2 text-ink-faint hover:text-red-500 transition" title="Cerrar Sesión">
           <LogOut size={18} />
         </button>
       </div>
@@ -254,16 +277,16 @@ export default function ChatPage() {
   );
 
   return (
-    <div className="bg-brand-50 h-screen overflow-hidden flex font-sans text-slate-800">
+    <div className="bg-app h-screen overflow-hidden flex font-sans text-ink">
       {/* Sidebar izquierda (desktop) */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex-col hidden md:flex">{sidebar}</aside>
+      <aside className="w-64 bg-panel border-r border-edge flex-col hidden md:flex">{sidebar}</aside>
 
       {/* Sidebar móvil (overlay) */}
       {showSidebar && (
         <div className="fixed inset-0 z-40 md:hidden" onClick={() => setShowSidebar(false)}>
           <div className="absolute inset-0 bg-black/40" />
           <aside
-            className="absolute left-0 top-0 bottom-0 w-64 bg-white flex flex-col shadow-2xl"
+            className="absolute left-0 top-0 bottom-0 w-64 bg-panel flex flex-col shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {sidebar}
@@ -272,24 +295,40 @@ export default function ChatPage() {
       )}
 
       {/* Chat principal */}
-      <main className="flex-1 flex flex-col relative bg-white/50 min-w-0">
-        <header className="md:hidden h-16 bg-white border-b border-slate-200 flex items-center px-4 justify-between shrink-0">
-          <button onClick={() => setShowSidebar(true)} className="text-slate-500 hover:text-brand-600">
-            <Menu size={22} />
-          </button>
-          <h2 className="font-bold text-lg text-brand-900">{headerTitle}</h2>
-          <button onClick={logout} className="text-slate-400 hover:text-red-500">
+      <main className="flex-1 flex flex-col relative bg-app min-w-0">
+        <header className="md:hidden h-16 bg-panel border-b border-edge flex items-center px-4 gap-2 justify-between shrink-0">
+          {/* El botón de usuarios va pegado al título, lejos del de salir */}
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={() => setShowSidebar(true)} className="text-ink-faint hover:text-accent shrink-0">
+              <Menu size={22} />
+            </button>
+            <h2 className="font-bold text-lg text-accent-ink truncate">{headerTitle}</h2>
+            <button
+              onClick={() => setShowUsers(true)}
+              className="relative shrink-0 text-ink-faint hover:text-accent mr-2"
+              title="Usuarios en línea"
+            >
+              <Users size={22} />
+              {onlineUsers.length > 0 && (
+                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center">
+                  {onlineUsers.length}
+                </span>
+              )}
+            </button>
+          </div>
+          <button onClick={logout} className="text-ink-faint hover:text-red-500 shrink-0 pl-2">
             <LogOut size={20} />
           </button>
         </header>
 
-        <div className="hidden md:flex h-14 items-center px-6 border-b border-slate-200 bg-white shrink-0">
-          <h2 className="font-bold text-brand-900">{headerTitle}</h2>
+        <div className="hidden md:flex h-14 items-center px-6 border-b border-edge bg-panel shrink-0">
+          <h2 className="font-bold text-accent-ink">{headerTitle}</h2>
         </div>
 
         <MessageList messages={activeMessages} currentUsername={username} />
 
-        <MessageInput onSend={sendMessage} />
+        {/* Las fotos solo se permiten en privado (server/socket.js lo reimpone) */}
+        <MessageInput onSend={sendMessage} allowPhotos={activeView.type === 'dm'} />
       </main>
 
       {/* Sidebar derecha: usuarios en línea */}
@@ -299,6 +338,8 @@ export default function ChatPage() {
         isAdmin={session.role === 'admin'}
         onOpenDM={openDM}
         onAdminAction={adminAction}
+        open={showUsers}
+        onClose={() => setShowUsers(false)}
       />
 
       {showAdmin && <AdminModal onClose={() => setShowAdmin(false)} />}

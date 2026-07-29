@@ -1,11 +1,11 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
-const { users, rooms } = require('./db');
+const { users, rooms, guestBans } = require('./db');
 const { signToken, verifyToken } = require('./auth');
+const { syncMuted } = require('./socket');
+const { UPLOADS_DIR, uploadUrl } = require('./uploads');
 
 const router = express.Router();
 
@@ -36,8 +36,15 @@ router.post('/login', (req, res) => {
   if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
     return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
   }
-  if (user.is_banned) {
-    return res.status(403).json({ success: false, message: 'Usuario baneado.' });
+  // banStatus deja pasar (y limpia) los bans ya vencidos
+  const ban = users.banStatus(user.username);
+  if (ban.banned) {
+    return res.status(403).json({
+      success: false,
+      message: ban.until
+        ? `Tu cuenta está baneada hasta el ${new Date(ban.until).toLocaleString('es')}.`
+        : 'Tu cuenta está baneada de forma permanente.',
+    });
   }
 
   res.json({
@@ -109,19 +116,47 @@ router.delete('/rooms/:id', requireAdmin, (req, res) => {
 // --- Users (solo admin ve la lista completa) ---
 router.get('/users', requireAdmin, (req, res) => {
   res.json(
-    users.all().map((u) => ({
-      username: u.username,
-      role: u.role,
-      isBanned: !!u.is_banned,
-      isMuted: !!u.is_muted,
-    }))
+    users.all().map((u) => {
+      // Vía banStatus para no reportar como baneado a alguien cuyo ban ya venció
+      const ban = users.banStatus(u.username);
+      return {
+        username: u.username,
+        role: u.role,
+        isBanned: ban.banned,
+        bannedUntil: ban.until,
+        isMuted: !!u.is_muted,
+      };
+    })
   );
 });
 
-// --- Subida de fotos ---
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+router.post('/users/:username/unban', requireAdmin, (req, res) => {
+  if (!users.findByUsername(req.params.username)) {
+    return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+  }
+  users.setBanned(req.params.username, false);
+  res.json({ success: true });
+});
 
+router.post('/users/:username/unmute', requireAdmin, (req, res) => {
+  if (!users.findByUsername(req.params.username)) {
+    return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+  }
+  users.setMuted(req.params.username, false);
+  // Si está conectado, levantar el silencio en su sesión viva también
+  syncMuted(req.app.get('io'), req.params.username, false);
+  res.json({ success: true });
+});
+
+// --- Bans de invitados (no existen en la tabla users) ---
+router.get('/guest-bans', requireAdmin, (req, res) => res.json(guestBans.all()));
+
+router.delete('/guest-bans/:username', requireAdmin, (req, res) => {
+  guestBans.remove(req.params.username);
+  res.json({ success: true });
+});
+
+// --- Subida de fotos (solo se usan en mensajes privados; ver server/socket.js) ---
 const ALLOWED_TYPES = {
   'image/jpeg': '.jpg',
   'image/png': '.png',
@@ -156,7 +191,7 @@ router.post('/upload', (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No se recibió ninguna imagen' });
     }
-    res.json({ success: true, url: `/uploads/${req.file.filename}` });
+    res.json({ success: true, url: uploadUrl(req.file.filename) });
   });
 });
 

@@ -1,13 +1,73 @@
 @import "tailwindcss";
 
+/* Modo oscuro por clase en <html>, no por media query: el toggle manda sobre el
+   sistema. main.jsx / index.html la ponen antes de pintar para evitar el flash. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Paleta de marca: verde petróleo */
 @theme {
-  --color-brand-50: #f0f9ff;
-  --color-brand-100: #e0f2fe;
-  --color-brand-200: #bae6fd;
-  --color-brand-500: #0ea5e9;
-  --color-brand-600: #0284c7;
-  --color-brand-700: #0369a1;
-  --color-brand-900: #0c4a6e;
+  --color-brand-50: #edf7f6;
+  --color-brand-100: #d7eae9;
+  --color-brand-200: #b0d6d4;
+  --color-brand-500: #2f8a86;
+  --color-brand-600: #26706e;
+  --color-brand-700: #1e5957;
+  --color-brand-900: #143b3a;
+}
+
+/* Tokens semánticos: un mismo nombre resuelve distinto en claro y oscuro.
+   `inline` hace que las utilidades apunten a la variable de runtime (--app, --ink…)
+   en vez de congelar el valor, que es lo que permite cambiar de tema sin recompilar. */
+@theme inline {
+  --color-app: var(--app);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-edge: var(--edge);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+}
+
+:root {
+  color-scheme: light;
+  --app: #edf2f1;          /* fondo de la aplicación */
+  --panel: #f7faf9;        /* sidebars, headers, barra de escritura */
+  --surface: #fdfefe;      /* tarjetas y burbujas de otros */
+  --muted: #e4edeb;        /* rellenos suaves: inputs, hover */
+  --edge: #dbe7e5;         /* bordes y separadores */
+  --ink: #17302e;          /* texto principal */
+  --ink-soft: #4a6462;     /* texto secundario */
+  --ink-faint: #7c9694;    /* texto terciario, iconos en reposo */
+  --accent: #2f8a86;
+  --accent-strong: #26706e;
+  --accent-soft: #d7eae9;  /* fondo de elementos activos */
+  --accent-ink: #1e5957;   /* texto sobre accent-soft */
+}
+
+.dark {
+  color-scheme: dark;
+  --app: #10201f;
+  --panel: #162928;
+  --surface: #1c3231;
+  --muted: #24403e;
+  --edge: #294644;
+  --ink: #e4efee;
+  --ink-soft: #a9c2c0;
+  --ink-faint: #7b9694;
+  --accent: #3fa5a0;       /* aclarado: el petróleo original no contrasta sobre fondo oscuro */
+  --accent-strong: #55b8b3;
+  --accent-soft: #1e3f3e;
+  --accent-ink: #7fd0cb;
+}
+
+body {
+  background-color: var(--app);
+  color: var(--ink);
 }
 
 @keyframes message-enter {

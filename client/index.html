@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chatnopolis</title>
+    <meta name="theme-color" content="#edf2f1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#10201f" media="(prefers-color-scheme: dark)" />
+    <script>
+      // Aplica el tema antes del primer pintado para que no haya flash blanco.
+      // Debe coincidir con la clave y la lógica de src/lib/theme.js.
+      (function () {
+        try {
+          var saved = localStorage.getItem('chatnopolis-theme');
+          var dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

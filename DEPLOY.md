@@ -38,6 +38,10 @@ Crea `/home/chatnopolis/Chatnopolis/.env`:
 PORT=3000
 JWT_SECRET=una-cadena-larga-y-aleatoria-aqui      # genera con: openssl rand -hex 32
 ADMIN_PASSWORD=una-contraseña-fuerte-para-admin    # solo se usa al crear la DB por primera vez
+
+# Opcionales (estos son los valores por defecto)
+ROOM_HISTORY_LIMIT=500     # mensajes que se conservan por sala; los viejos se borran solos
+PHOTO_TTL_MINUTES=1440     # vida de una foto en disco (24 h). 0 = sin vencimiento por tiempo
 ```
 
 > **Importante:** `ADMIN_PASSWORD` solo aplica la primera vez que se crea `data/chat.db`.

@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import { api } from '../lib/api';
 import { setSession } from '../lib/session';
+import ThemeToggle from '../components/ThemeToggle.jsx';
 
 const inputClass =
-  'w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-slate-50 hover:bg-white transition-colors';
+  'w-full px-4 py-3 rounded-lg border border-edge bg-muted text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-accent hover:bg-surface transition-colors';
 const smallInputClass =
-  'w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-slate-50';
+  'w-full px-3 py-2 rounded-lg border border-edge bg-muted text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-accent';
 
 const TABS = [
   { id: 'guest', label: 'Invitado' },
@@ -89,22 +90,23 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="bg-brand-50 min-h-screen flex items-center justify-center font-sans text-slate-800 p-4">
-      <div className="w-full max-w-lg p-8 bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/50 my-8">
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-brand-900 mb-2">Chatnopolis</h1>
-          <p className="text-slate-500">Un espacio tranquilo para conversar</p>
+    <div className="bg-app min-h-screen flex items-center justify-center font-sans text-ink p-4">
+      <div className="w-full max-w-lg p-8 bg-panel rounded-2xl shadow-xl border border-edge my-8">
+        <div className="relative text-center mb-6">
+          <ThemeToggle className="absolute right-0 top-0" />
+          <h1 className="text-3xl font-bold text-accent-ink mb-2">Chatnopolis</h1>
+          <p className="text-ink-soft">Un espacio tranquilo para conversar</p>
         </div>
 
-        <div className="flex border-b border-slate-200 mb-6">
+        <div className="flex border-b border-edge mb-6">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => switchTab(t.id)}
               className={`flex-1 py-2 focus:outline-none transition-colors ${
                 tab === t.id
-                  ? 'text-brand-600 border-b-2 border-brand-500 font-semibold'
-                  : 'text-slate-500 hover:text-brand-600'
+                  ? 'text-accent border-b-2 border-accent font-semibold'
+                  : 'text-ink-faint hover:text-accent'
               }`}
             >
               {t.label}
@@ -114,11 +116,11 @@ export default function AuthPage() {
 
         {tab !== 'register' && (
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Elige una Sala</label>
+            <label className="block text-sm font-medium text-ink-soft mb-1">Elige una Sala</label>
             <select
               value={roomId}
               onChange={(e) => setRoomId(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+              className="w-full px-4 py-3 rounded-lg border border-edge bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-accent"
             >
               {rooms.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -132,12 +134,12 @@ export default function AuthPage() {
         {tab === 'guest' && (
           <form onSubmit={handleGuest} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Tu Nick / Apodo</label>
+              <label className="block text-sm font-medium text-ink-soft mb-1">Tu Nick / Apodo</label>
               <input name="username" required placeholder="Ej: Viajero_Astral" className={inputClass} />
             </div>
             <button
               type="submit"
-              className="w-full py-3 px-4 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200 flex justify-center items-center gap-2"
+              className="w-full py-3 px-4 bg-accent hover:bg-accent-strong text-white font-semibold rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200 flex justify-center items-center gap-2"
             >
               <span>Entrar como Invitado</span>
               <LogIn size={18} />
@@ -148,17 +150,17 @@ export default function AuthPage() {
         {tab === 'login' && (
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nombre de Usuario</label>
+              <label className="block text-sm font-medium text-ink-soft mb-1">Nombre de Usuario</label>
               <input name="username" required placeholder="Tu usuario registrado" className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
+              <label className="block text-sm font-medium text-ink-soft mb-1">Contraseña</label>
               <input name="password" type="password" required placeholder="••••••••" className={inputClass} />
             </div>
             <button
               type="submit"
               disabled={busy}
-              className="w-full py-3 px-4 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200"
+              className="w-full py-3 px-4 bg-accent hover:bg-accent-strong disabled:opacity-60 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200"
             >
               {busy ? 'Entrando…' : 'Iniciar Sesión'}
             </button>
@@ -169,36 +171,36 @@ export default function AuthPage() {
           <form onSubmit={handleRegister} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Completo</label>
+                <label className="block text-sm font-medium text-ink-soft mb-1">Nombre Completo</label>
                 <input name="name" required placeholder="Juan Pérez" className={smallInputClass} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">País</label>
+                <label className="block text-sm font-medium text-ink-soft mb-1">País</label>
                 <input name="country" required placeholder="Ej: México" className={smallInputClass} />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email (Recuperación)</label>
+              <label className="block text-sm font-medium text-ink-soft mb-1">Email (Recuperación)</label>
               <input name="email" type="email" required placeholder="juan@ejemplo.com" className={smallInputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Usuario (Nick)</label>
+              <label className="block text-sm font-medium text-ink-soft mb-1">Usuario (Nick)</label>
               <input name="username" required placeholder="jperez2024" className={smallInputClass} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
+                <label className="block text-sm font-medium text-ink-soft mb-1">Contraseña</label>
                 <input name="password" type="password" required placeholder="••••••••" className={smallInputClass} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Confirmar</label>
+                <label className="block text-sm font-medium text-ink-soft mb-1">Confirmar</label>
                 <input name="confirmPassword" type="password" required placeholder="••••••••" className={smallInputClass} />
               </div>
             </div>
             <button
               type="submit"
               disabled={busy}
-              className="w-full py-3 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200 mt-2"
+              className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200 mt-2"
             >
               {busy ? 'Creando…' : 'Crear Cuenta'}
             </button>
@@ -206,12 +208,12 @@ export default function AuthPage() {
         )}
 
         {error && (
-          <div className="mt-4 text-center text-sm text-red-500 bg-red-50 p-2 rounded-lg border border-red-200">
+          <div className="mt-4 text-center text-sm text-red-600 bg-red-50 p-2 rounded-lg border border-red-200 dark:bg-red-400/10 dark:border-red-400/25 dark:text-red-300">
             {error}
           </div>
         )}
         {notice && (
-          <div className="mt-4 text-center text-sm text-emerald-600 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+          <div className="mt-4 text-center text-sm text-emerald-700 bg-emerald-50 p-2 rounded-lg border border-emerald-200 dark:bg-emerald-400/10 dark:border-emerald-400/25 dark:text-emerald-300">
             {notice}
           </div>
         )}
