@@ -31,7 +31,8 @@ function requireAdmin(req, res, next) {
 // --- Auth ---
 router.post('/login', (req, res) => {
   const { username, password } = req.body || {};
-  const user = username && users.findByUsername(username);
+  // findByNick: entrar como "Admin" o "ADMIN" es entrar como "admin"
+  const user = username && users.findByNick(username);
 
   if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
     return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
@@ -71,7 +72,8 @@ router.post('/register', (req, res) => {
   if (password.length < 6) {
     return res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 6 caracteres' });
   }
-  if (users.findByUsername(username)) {
+  // Por canónica: "Admin" no puede registrarse al lado de "admin"
+  if (users.findByNick(username)) {
     return res.status(400).json({ success: false, message: 'El usuario ya existe' });
   }
 
@@ -131,20 +133,22 @@ router.get('/users', requireAdmin, (req, res) => {
 });
 
 router.post('/users/:username/unban', requireAdmin, (req, res) => {
-  if (!users.findByUsername(req.params.username)) {
+  const user = users.findByNick(req.params.username);
+  if (!user) {
     return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
   }
-  users.setBanned(req.params.username, false);
+  users.setBanned(user.username, false);
   res.json({ success: true });
 });
 
 router.post('/users/:username/unmute', requireAdmin, (req, res) => {
-  if (!users.findByUsername(req.params.username)) {
+  const user = users.findByNick(req.params.username);
+  if (!user) {
     return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
   }
-  users.setMuted(req.params.username, false);
-  // Si está conectado, levantar el silencio en su sesión viva también
-  syncMuted(req.app.get('io'), req.params.username, false);
+  users.setMuted(user.username, false);
+  // Si está conectado, levantar el silencio en sus sesiones vivas también
+  syncMuted(req.app.get('io'), user.username, false);
   res.json({ success: true });
 });
 

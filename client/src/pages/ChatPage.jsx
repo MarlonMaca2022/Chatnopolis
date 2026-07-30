@@ -12,6 +12,11 @@ import ThemeToggle from '../components/ThemeToggle.jsx';
 
 const BAN_LABELS = { 10: '10 minutos', 60: '1 hora', 240: '4 horas' };
 
+// Reintentos cuando el nick choca al reconectar: cubren de sobra el pingTimeout del
+// servidor (~20 s), que es lo que tarda en soltar nuestro socket anterior.
+const NICK_RETRY_MS = 3000;
+const NICK_MAX_RETRIES = 10;
+
 export default function ChatPage() {
   const navigate = useNavigate();
   const session = useMemo(() => getSession(), []);
@@ -53,12 +58,28 @@ export default function ChatPage() {
     });
     socketRef.current = socket;
 
+    let hadConnected = false;   // ya entramos una vez => un choque de nick es nuestro socket viejo
+    let nickRetries = 0;
+    let nickRetryTimer;
+
     socket.on('connect', () => {
       setConnected(true);
+      nickRetries = 0;
+      hadConnected = true;
       socket.emit('join', { room: roomId });
     });
 
     socket.on('connect_error', (err) => {
+      // Reconectando después de un corte (wifi -> datos): el servidor todavía puede
+      // tener vivo nuestro socket anterior, y la reserva del nick con la que
+      // chocamos es la nuestra. Reintentamos en silencio mientras el socket viejo
+      // vence en el servidor, en vez de mandar al invitado de vuelta al login.
+      // Un error de middleware no dispara la reconexión automática: hay que pedirla.
+      if (err.data?.code === 'NICK_IN_USE' && hadConnected && nickRetries < NICK_MAX_RETRIES) {
+        nickRetries += 1;
+        nickRetryTimer = setTimeout(() => socket.connect(), NICK_RETRY_MS);
+        return;
+      }
       sessionStorage.setItem('disconnect_reason', err.message || 'No se pudo conectar');
       clearSession();
       navigate('/');
@@ -103,13 +124,19 @@ export default function ChatPage() {
       }
     });
 
+    // Vuelve a "Conectando…" mientras se reconecta (incluidos los reintentos de nick)
+    socket.on('disconnect', () => setConnected(false));
+
     socket.on('roomUsers', ({ users }) => setOnlineUsers(users));
 
     socket.on('roomsUpdate', (rooms) => {
       setRoomsMap(Object.fromEntries(rooms.map((r) => [r.id, r.name])));
     });
 
-    return () => socket.disconnect();
+    return () => {
+      clearTimeout(nickRetryTimer);
+      socket.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -29,7 +29,8 @@ npm run dev:client   # Vite dev server → http://localhost:5173 (proxy al backe
 server/
   index.js     Arranque Express + Socket.IO, sirve /uploads y client/dist (SPA fallback)
   db.js        SQLite (node:sqlite): tablas + helpers users/rooms/messages/guestBans + seed inicial
-  auth.js      Firmar/verificar tokens JWT
+  auth.js      Firmar/verificar tokens JWT; exige JWT_SECRET o aborta el arranque
+  nicks.js     canonicalNick() — forma canónica de un nombre; TODA comparación de identidad pasa por acá
   routes.js    API REST: login, register, rooms, users, upload de fotos + middleware requireAuth/requireAdmin
   socket.js    Chat en tiempo real; el rol se re-verifica server-side (no se confía en el cliente)
   uploads.js   UPLOADS_DIR + removeUploadFile() — el único módulo que borra archivos de fotos
@@ -52,15 +53,25 @@ SQLite en `data/chat.db` (WAL). Tablas: `users`, `rooms`, `messages` (sala **o**
 
 `roomHistory()` manda por defecto **los mismos 500**: lo que la sala retiene es exactamente lo que se ve al entrar, así no hay dos números que explicar. `dmHistory()` sigue en **50** (los DM no se podan, ahí sí hay más guardado del que se envía y no hay paginación en la UI).
 
+**El historial de DM solo se entrega entre cuentas registradas.** `dm:history` (`server/socket.js`) corta si quien pregunta es invitado o si el otro no existe en `users`: como el nick de un invitado lo puede reclamar cualquiera cuando se va, servirlo dejaría que el próximo `Maria` leyera los privados de la anterior. Para invitados el DM vive **solo en la sesión abierta** (se sigue guardando en la base, pero nadie lo puede leer desde la app).
+
 El cliente **reemplaza** la lista local con cada `history` (`ChatPage.jsx`, `socket.on('history')`), así que cambiar de sala, recargar o reconectar reinicia lo que se ve a esos 500 — no se acumula entre sesiones.
 
 Las migraciones sobre bases ya creadas van con `ALTER TABLE` guardado por el helper `hasColumn()` (`PRAGMA table_info`), porque `CREATE TABLE IF NOT EXISTS` no toca tablas existentes.
+
+## Identidad y nicks — IMPORTANTE
+
+Un invitado no tiene cuenta: **su identidad es el nombre**. De ahí salen tres reglas que hay que respetar en cualquier código que compare usuarios.
+
+- **Todo se compara por forma canónica** (`server/nicks.js`, `canonicalNick()`): sin tildes, sin espacios y en minúsculas. `María`, `MARIA` y `M aria` son **la misma identidad** que `maria`. Nunca compares nombres con `===` ni con `WHERE username = ?` — SQLite compara texto byte a byte, y sin esto un invitado entra como `Admin` (no colisiona con `admin`) o un baneado vuelve agregándole una tilde a su nick. La canónica se guarda materializada en `users.username_canon` (índice `UNIQUE`) y `guest_bans.username_canon`; el `username` original queda solo para mostrarlo. Por eso las búsquedas por nombre van todas por **`users.findByNick()`**.
+- **Un nick de invitado a la vez.** `guestNicks` (`server/socket.js`) reserva la canónica en el **handshake**, no en el `join`: entre uno y otro pasa tiempo y ahí entrarían las dos conexiones. Se libera en `disconnect` solo si la reserva sigue siendo de ese socket, y si el dueño ya no está en `io.sockets.sockets` el nombre se cede — una reserva colgada no bloquea el nick para siempre. El rechazo viaja como error de handshake, y el cliente ya lo muestra sin cambios (`ChatPage.jsx` → `sessionStorage.disconnect_reason` → `AuthPage`).
+- **Una cuenta registrada sí puede tener varias sesiones** (celular + compu). Por eso `socketIdsFor()` devuelve **todos** los sockets de una identidad y los DM, `disconnectUser()` y `syncMuted()` se aplican a todos. Nunca vuelvas a un helper que devuelva "el primer socket que encuentre": era la causa de que un DM o un baneo cayeran en la persona equivocada.
 
 ## Moderación (silenciar / expulsar / banear)
 
 - **Silenciar** — toggle sin vencimiento. Bloquea `chatMessage` y `privateMessage`. Persiste en `users.is_muted` para registrados; para invitados solo vive en la conexión. **`socket.user.isMuted` es la fuente de verdad de la sesión**: `join` reconstruye `usersOnline` a partir de él, así que todo cambio de silencio debe pasar por `syncMuted()` (`server/socket.js`) o se pierde al cambiar de sala. Las rutas REST también lo llaman para no desincronizar sesiones vivas. El estado viaja a toda la sala en `roomUsers` (`isMuted`), y `UserList` lo pinta en gris + alterna el label Silenciar/Desilenciar.
 - **Expulsar** — solo cierra el socket, no persiste nada: el usuario puede volver enseguida.
-- **Banear** — duraciones 10 min / 1 h / 4 h / permanente (`BAN_DURATIONS` en `server/socket.js`, validadas server-side). Registrados: `users.is_banned` + `banned_until`. Invitados: fila en `guest_bans` con `expires_at`. En ambos, **`NULL` en la fecha = permanente**. Se banea la **identidad, no la IP** (el proyecto no captura IPs): un invitado evade el ban cambiando de nick.
+- **Banear** — duraciones 10 min / 1 h / 4 h / permanente (`BAN_DURATIONS` en `server/socket.js`, validadas server-side). Registrados: `users.is_banned` + `banned_until`. Invitados: fila en `guest_bans` con `expires_at`. En ambos, **`NULL` en la fecha = permanente**. Se banea la **identidad, no la IP** (el proyecto no captura IPs): el ban aguanta las variantes del mismo nombre porque va por canónica (ver *Identidad y nicks*), pero un invitado sigue evadiéndolo si elige un nick **realmente** distinto.
 - **Vencimiento perezoso**: no hay cron ni timers. `users.banStatus()` y `guestBans.status()` evalúan la fecha al leer y borran el registro vencido en el momento. Todo chequeo de ban debe pasar por esos helpers, nunca leer `is_banned` directo.
 - **Desbanear / desilenciar** viven en el `AdminModal` vía REST (`POST /api/users/:u/unban`, `/unmute`, `DELETE /api/guest-bans/:u`), no en la lista de usuarios en línea: un baneado no está conectado. Los invitados baneados tienen su propia sección porque no existen en la tabla `users`.
 
@@ -96,6 +107,7 @@ Identidad: **verde petróleo**. La paleta de marca vive en `@theme` como `--colo
 - **Cambio de sala:** una sala activa a la vez. El sidebar (`ChatPage.jsx`) lista todas las salas de `roomsMap`; al hacer clic, el cliente emite `join` y el servidor sale de la sala anterior, entra a la nueva y reenvía el historial. El servidor **ya soportaba** esto — no requiere cambios en `server/`. `roomId` es estado con un `roomIdRef` para que el handler `message` (registrado una sola vez) enrute al valor actual.
 - **Usuarios en línea en móvil:** `UserList.jsx` renderiza el mismo contenido dos veces — columna fija (`hidden md:flex`) y drawer overlay a la derecha (`md:hidden`) controlado por las props `open`/`onClose` desde `ChatPage`. Se abre con el icono 👥 del header móvil, que muestra el contador de conectados.
 - **Emojis:** botón 😊 en `MessageInput.jsx` abre un popover con `emoji-picker-react`; el emoji se inserta en la posición del cursor y viaja como texto normal (sin cambios en servidor ni base de datos).
+- **`JWT_SECRET` es obligatoria y el modo estricto es el default** (`server/auth.js`): sin ella el proceso aborta con instrucciones, y también rechaza los valores de ejemplo (el de `DEPLOY.md`, el viejo default del repo). El chequeo **no** pregunta por `NODE_ENV === 'production'` porque nadie la setea en el VPS — pm2 arranca sin ella y el chequeo no protegería nada. Se relaja solo con `NODE_ENV=development`, que lo pone `nodemon.json`, así que `npm run dev` sigue andando sin `.env` (con aviso). Si agregás otro script de arranque para desarrollo, tiene que setear esa variable.
 - El rol de admin se valida **en el servidor** tanto en REST (`requireAdmin`) como en socket — nunca confiar en el flag del cliente.
 - El fetch wrapper (`client/src/lib/api.js`) adjunta `Authorization: Bearer <token>` y serializa JSON salvo cuando el body es `FormData` (upload).
 - Deploy en VPS (nginx + pm2 + HTTPS + backups): ver **DEPLOY.md**.

@@ -36,13 +36,19 @@ Crea `/home/chatnopolis/Chatnopolis/.env`:
 
 ```env
 PORT=3000
-JWT_SECRET=una-cadena-larga-y-aleatoria-aqui      # genera con: openssl rand -hex 32
+JWT_SECRET=                                        # OBLIGATORIA. Generala con: openssl rand -hex 32
 ADMIN_PASSWORD=una-contraseña-fuerte-para-admin    # solo se usa al crear la DB por primera vez
 
 # Opcionales (estos son los valores por defecto)
 ROOM_HISTORY_LIMIT=500     # mensajes que se conservan por sala; los viejos se borran solos
 PHOTO_TTL_MINUTES=1440     # vida de una foto en disco (24 h). 0 = sin vencimiento por tiempo
 ```
+
+> **`JWT_SECRET` es obligatoria: sin ella el servidor no arranca** y te imprime cómo generarla.
+> Es a propósito — con ese secreto se firman las sesiones, y si el servidor usara uno de
+> ejemplo cualquiera podría fabricarse un token de administrador. También rechaza los
+> valores de ejemplo copiados tal cual y avisa si tiene menos de 32 caracteres.
+> Cambiarla más adelante es seguro: solo obliga a todos a volver a iniciar sesión.
 
 > **Importante:** `ADMIN_PASSWORD` solo aplica la primera vez que se crea `data/chat.db`.
 > Si ya arrancaste el servidor sin ella, borra `data/chat.db` y reinicia (perderás datos)
@@ -147,5 +153,10 @@ pm2 restart chatnopolis
 ## Endurecimiento pendiente (ideas futuras)
 
 - Rate limiting en `/api/login`, `/api/register` y `/api/upload` (p. ej. `express-rate-limit`).
-- Exigir sesión para subir fotos (hoy el endpoint es público, como el chat de invitados).
+- **Exigir sesión para subir fotos** — hoy `POST /api/upload` es público: cualquiera puede
+  subir 5 MB por pedido sin estar en el chat y llenar el disco. Los invitados no tienen
+  cuenta, así que el arreglo necesita darles un pase temporal al entrar.
+- Verificar que el admin de producción **no** haya quedado con la contraseña por defecto
+  (pasa si el primer arranque fue sin `ADMIN_PASSWORD`): probá `admin` / `admin123` en el
+  login; si entra, hay que cambiarla.
 - Servir `uploads/` desde nginx directamente para quitarle carga a Node.
