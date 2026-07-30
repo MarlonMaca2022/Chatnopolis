@@ -42,7 +42,14 @@ ADMIN_PASSWORD=una-contraseña-fuerte-para-admin    # solo se usa al crear la DB
 # Opcionales (estos son los valores por defecto)
 ROOM_HISTORY_LIMIT=500     # mensajes que se conservan por sala; los viejos se borran solos
 PHOTO_TTL_MINUTES=1440     # vida de una foto en disco (24 h). 0 = sin vencimiento por tiempo
+PHOTO_DISK_LIMIT_MB=500    # techo de la carpeta uploads/. Al llegar, se rechazan subidas nuevas
 ```
+
+> **`PHOTO_DISK_LIMIT_MB` es el freno de mano contra el disco lleno.** Ponelo en función de lo
+> que tenga el VPS: si el disco es de 25 GB, 500 MB es holgado. Cuando la carpeta llega al
+> techo, las subidas responden 507 con un mensaje claro y el chat sigue funcionando; el
+> espacio se recupera solo cuando el TTL vence las fotos viejas. Mirá el arranque del log:
+> imprime `disco X MB de Y MB`. Un disco lleno sí frena a SQLite y ahí se cae todo.
 
 > **`JWT_SECRET` es obligatoria: sin ella el servidor no arranca** y te imprime cómo generarla.
 > Es a propósito — con ese secreto se firman las sesiones, y si el servidor usara uno de
@@ -152,10 +159,15 @@ pm2 restart chatnopolis
 
 ## Endurecimiento pendiente (ideas futuras)
 
-- Rate limiting en `/api/login`, `/api/register` y `/api/upload` (p. ej. `express-rate-limit`).
-- **Exigir sesión para subir fotos** — hoy `POST /api/upload` es público: cualquiera puede
-  subir 5 MB por pedido sin estar en el chat y llenar el disco. Los invitados no tienen
-  cuenta, así que el arreglo necesita darles un pase temporal al entrar.
+- Rate limiting en `/api/login` (fuerza bruta contra el admin) y `/api/register` (spam de
+  cuentas), p. ej. con `express-rate-limit`. `/api/upload` ya tiene el suyo.
+- Límite de conexiones simultáneas por IP: hoy un script puede abrir muchas sesiones de
+  invitado con nicks distintos. Las cuotas de subida y el techo de disco ya acotan el daño,
+  pero limitar por IP requiere leer `X-Forwarded-For` y `app.set('trust proxy', 1)`.
+- Throttle de mensajes por socket: un bucle de `chatMessage` inunda la sala y, con el
+  límite de 500 mensajes, empuja el historial real fuera de la ventana.
+- `multer` 1.x está EOL con CVEs de DoS por multipart malformado: subir a 2.x.
+- `helmet` para las cabeceras de seguridad.
 - Verificar que el admin de producción **no** haya quedado con la contraseña por defecto
   (pasa si el primer arranque fue sin `ADMIN_PASSWORD`): probá `admin` / `admin123` en el
   login; si entra, hay que cambiarla.

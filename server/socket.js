@@ -340,6 +340,15 @@ function socketIdsFor(username) {
   return Object.keys(usersOnline).filter((id) => usersOnline[id].canon === canon);
 }
 
+// La sesión detrás de un socketId, o null. Es lo que usa POST /api/upload para
+// exigir que quien sube una foto esté realmente en el chat: los invitados no tienen
+// cuenta ni token, así que su credencial es estar conectados. No es una restricción
+// extra — para mandar la foto por privado hace falta el socket igual.
+function sessionForSocket(socketId) {
+  const user = typeof socketId === 'string' && usersOnline[socketId];
+  return user ? { username: user.username, canon: user.canon, role: user.role, isMuted: !!user.isMuted } : null;
+}
+
 function updateRoomUsers(io, room) {
   io.to(room).emit('roomUsers', {
     room,
@@ -354,4 +363,4 @@ function validImageUrl(url) {
   return typeof url === 'string' && /^\/uploads\/[\w.-]+$/.test(url) ? url : null;
 }
 
-module.exports = { setupSocket, syncMuted };
+module.exports = { setupSocket, syncMuted, sessionForSocket };

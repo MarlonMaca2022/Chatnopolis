@@ -26,9 +26,15 @@ export const api = {
   unmuteUser: (username) => request(`/users/${encodeURIComponent(username)}/unmute`, { method: 'POST' }),
   getGuestBans: () => request('/guest-bans'),
   unbanGuest: (username) => request(`/guest-bans/${encodeURIComponent(username)}`, { method: 'DELETE' }),
-  uploadPhoto: (file) => {
+  // socketId identifica la sesión viva del que sube. Es la credencial de los
+  // invitados, que no tienen cuenta ni token (ver requireChatSession en el servidor).
+  uploadPhoto: (file, socketId) => {
     const form = new FormData();
     form.append('photo', file);
-    return request('/upload', { method: 'POST', body: form });
+    return request('/upload', {
+      method: 'POST',
+      body: form,
+      headers: socketId ? { 'X-Socket-Id': socketId } : {},
+    });
   },
 };

@@ -1,7 +1,15 @@
 const fs = require('fs');
 const path = require('path');
 const { messages } = require('./db');
-const { UPLOADS_DIR, uploadUrl, removeUploadFile } = require('./uploads');
+const {
+  UPLOADS_DIR,
+  uploadUrl,
+  removeUploadFile,
+  recalcUsage,
+  pruneQuotas,
+  usage,
+  DISK_LIMIT_MB,
+} = require('./uploads');
 
 // Cuánto vive una foto antes de borrarse del disco. 0 = sin vencimiento por tiempo
 // (igual desaparecen cuando su mensaje sale del límite de historial).
@@ -54,6 +62,11 @@ function sweepPhotos() {
     }
   }
 
+  // El barrido es el momento natural para poner en hora la cuenta del disco (ya
+  // recorrimos el directorio) y soltar las cuotas de gente que ya no está.
+  recalcUsage();
+  pruneQuotas();
+
   return removed;
 }
 
@@ -62,9 +75,11 @@ function startCleanupJobs() {
   messages.roomsWithMessages().forEach(pruneRoom);
 
   const removed = sweepPhotos();
+  const usedMb = (usage() / 1024 / 1024).toFixed(1);
   console.log(
     `Limpieza: máx. ${messages.ROOM_HISTORY_LIMIT} mensajes por sala, ` +
-      `fotos ${PHOTO_TTL_MINUTES > 0 ? `${PHOTO_TTL_MINUTES} min` : 'sin TTL'}` +
+      `fotos ${PHOTO_TTL_MINUTES > 0 ? `${PHOTO_TTL_MINUTES} min` : 'sin TTL'}, ` +
+      `disco ${usedMb} MB de ${DISK_LIMIT_MB > 0 ? `${DISK_LIMIT_MB} MB` : 'sin techo'}` +
       (removed ? ` — ${removed} archivo(s) borrados al arrancar` : '')
   );
 

@@ -24,6 +24,9 @@ export default function ChatPage() {
 
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
+  // Identifica la sesión viva ante el servidor al subir fotos. Cambia en cada
+  // reconexión, así que es estado y no una lectura directa del socket.
+  const [socketId, setSocketId] = useState(null);
   const [chats, setChats] = useState({}); // { chatKey: [mensajes] }
   const [roomId, setRoomId] = useState(initialRoom); // sala activa
   const roomIdRef = useRef(roomId);
@@ -64,6 +67,7 @@ export default function ChatPage() {
 
     socket.on('connect', () => {
       setConnected(true);
+      setSocketId(socket.id);
       nickRetries = 0;
       hadConnected = true;
       socket.emit('join', { room: roomId });
@@ -124,8 +128,12 @@ export default function ChatPage() {
       }
     });
 
-    // Vuelve a "Conectando…" mientras se reconecta (incluidos los reintentos de nick)
-    socket.on('disconnect', () => setConnected(false));
+    // Vuelve a "Conectando…" mientras se reconecta (incluidos los reintentos de nick).
+    // El socket id deja de ser válido acá: subir con uno viejo daría 401.
+    socket.on('disconnect', () => {
+      setConnected(false);
+      setSocketId(null);
+    });
 
     socket.on('roomUsers', ({ users }) => setOnlineUsers(users));
 
@@ -355,7 +363,11 @@ export default function ChatPage() {
         <MessageList messages={activeMessages} currentUsername={username} />
 
         {/* Las fotos solo se permiten en privado (server/socket.js lo reimpone) */}
-        <MessageInput onSend={sendMessage} allowPhotos={activeView.type === 'dm'} />
+        <MessageInput
+          onSend={sendMessage}
+          allowPhotos={activeView.type === 'dm'}
+          socketId={socketId}
+        />
       </main>
 
       {/* Sidebar derecha: usuarios en línea */}

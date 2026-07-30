@@ -7,7 +7,8 @@ import { useTheme } from '../lib/theme';
 
 // `allowPhotos` es false en las salas: las fotos solo van por privado (el servidor
 // también lo rechaza, esto es solo para no ofrecer el botón).
-export default function MessageInput({ onSend, allowPhotos = false }) {
+// `socketId` es lo que prueba ante el servidor que estamos en el chat al subir una foto.
+export default function MessageInput({ onSend, allowPhotos = false, socketId = null }) {
   const [text, setText] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -85,7 +86,7 @@ export default function MessageInput({ onSend, allowPhotos = false }) {
     if (file) {
       setUploading(true);
       try {
-        const res = await api.uploadPhoto(file);
+        const res = await api.uploadPhoto(file, socketId);
         imageUrl = res.url;
       } catch (err) {
         setError(err.message);

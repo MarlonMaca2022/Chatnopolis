@@ -4,8 +4,8 @@ const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const { users, rooms, guestBans } = require('./db');
 const { signToken, verifyToken } = require('./auth');
-const { syncMuted } = require('./socket');
-const { UPLOADS_DIR, uploadUrl } = require('./uploads');
+const { syncMuted, sessionForSocket } = require('./socket');
+const { UPLOADS_DIR, uploadUrl, checkQuota, noteUploaded } = require('./uploads');
 
 const router = express.Router();
 
@@ -185,7 +185,36 @@ const upload = multer({
   },
 });
 
-router.post('/upload', (req, res) => {
+// Quien sube tiene que estar conectado al chat. Los invitados no tienen cuenta ni
+// token, así que su credencial es la sesión viva: el cliente manda su socket id y
+// acá se verifica contra los usuarios en línea. Sin esto el endpoint es público y
+// cualquiera puede llenar el disco con un script (ver DEPLOY.md).
+function requireChatSession(req, res, next) {
+  const session = sessionForSocket(req.get('X-Socket-Id'));
+  if (!session) {
+    return res.status(401).json({
+      success: false,
+      message: 'Tenés que estar conectado al chat para enviar fotos.',
+    });
+  }
+  if (session.isMuted) {
+    return res.status(403).json({ success: false, message: 'Estás silenciado.' });
+  }
+  req.chatUser = session;
+  next();
+}
+
+// Las cuotas se chequean ANTES de recibir el archivo: si no, para saber si había
+// que rechazarlo ya lo habríamos escrito en el disco que estamos protegiendo.
+function enforceQuota(req, res, next) {
+  const verdict = checkQuota(req.chatUser.canon);
+  if (!verdict.ok) {
+    return res.status(verdict.status).json({ success: false, message: verdict.message });
+  }
+  next();
+}
+
+router.post('/upload', requireChatSession, enforceQuota, (req, res) => {
   upload.single('photo')(req, res, (err) => {
     if (err) {
       const message =
@@ -195,6 +224,8 @@ router.post('/upload', (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No se recibió ninguna imagen' });
     }
+    // Recién acá cuenta para la cuota: se cobran subidas efectivas, no intentos
+    noteUploaded(req.chatUser.canon, req.file.size);
     res.json({ success: true, url: uploadUrl(req.file.filename) });
   });
 });
