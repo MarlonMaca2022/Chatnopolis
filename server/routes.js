@@ -6,8 +6,15 @@ const { users, rooms, guestBans } = require('./db');
 const { signToken, verifyToken } = require('./auth');
 const { syncMuted, sessionForSocket } = require('./socket');
 const { UPLOADS_DIR, uploadUrl, checkQuota, noteUploaded } = require('./uploads');
+const { loginLimiter, registerLimiter } = require('./ratelimit');
 
 const router = express.Router();
+
+// Hash de descarte para comparar cuando el usuario NO existe. Sin esto, un login
+// con usuario inexistente responde al instante y uno con usuario real tarda lo que
+// tarda bcrypt: esa diferencia de tiempo sola ya dice qué cuentas existen. Se
+// calcula una vez al arrancar.
+const DUMMY_HASH = bcrypt.hashSync('contraseña-que-nunca-nadie-usa', 10);
 
 // --- Middleware de autenticación ---
 function requireAuth(req, res, next) {
@@ -29,12 +36,15 @@ function requireAdmin(req, res, next) {
 }
 
 // --- Auth ---
-router.post('/login', (req, res) => {
+router.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body || {};
   // findByNick: entrar como "Admin" o "ADMIN" es entrar como "admin"
   const user = username && users.findByNick(username);
 
-  if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
+  // Comparamos siempre, exista o no la cuenta: los dos caminos tienen que costar
+  // lo mismo (ver DUMMY_HASH). El `ok` de un usuario inexistente es siempre false.
+  const ok = bcrypt.compareSync(password || '', user ? user.password_hash : DUMMY_HASH);
+  if (!user || !ok) {
     return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
   }
   // banStatus deja pasar (y limpia) los bans ya vencidos
@@ -57,11 +67,18 @@ router.post('/login', (req, res) => {
   });
 });
 
-router.post('/register', (req, res) => {
+router.post('/register', registerLimiter, (req, res) => {
   const { username, password, name, email, country } = req.body || {};
 
   if (!username || !password || !name || !email) {
     return res.status(400).json({ success: false, message: 'Faltan datos obligatorios' });
+  }
+  // Campos de texto libre: sin un techo, un POST puede meter megabytes por fila.
+  if (name.length > 60 || email.length > 120 || (country && country.length > 60)) {
+    return res.status(400).json({ success: false, message: 'Alguno de los datos es demasiado largo' });
+  }
+  if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
+    return res.status(400).json({ success: false, message: 'El email no parece válido' });
   }
   if (!/^[a-zA-Z0-9_-]{3,20}$/.test(username)) {
     return res.status(400).json({
