@@ -38,12 +38,29 @@ Crea `/home/chatnopolis/Chatnopolis/.env`:
 PORT=3000
 JWT_SECRET=                                        # OBLIGATORIA. Generala con: openssl rand -hex 32
 ADMIN_PASSWORD=una-contraseña-fuerte-para-admin    # solo se usa al crear la DB por primera vez
+TRUST_PROXY=1                                      # PONELA si hay nginx delante (este manual lo pone)
 
 # Opcionales (estos son los valores por defecto)
 ROOM_HISTORY_LIMIT=500     # mensajes que se conservan por sala; los viejos se borran solos
+DM_RETENTION_DAYS=90       # vida de un mensaje privado. 0 = sin vencimiento
+DM_PAIR_LIMIT=500          # máximo de privados guardados por conversación
 PHOTO_TTL_MINUTES=1440     # vida de una foto en disco (24 h). 0 = sin vencimiento por tiempo
 PHOTO_DISK_LIMIT_MB=500    # techo de la carpeta uploads/. Al llegar, se rechazan subidas nuevas
 ```
+
+> **`TRUST_PROXY=1` es importante y es fácil de olvidar.** Con nginx delante, todas las peticiones
+> le llegan a Node desde `127.0.0.1`: sin esta variable, los límites por IP (intentos de login,
+> altas de cuentas, conexiones) verían **una sola IP** y se aplicarían al tráfico entero — el
+> primer abusivo dejaría afuera a todos los demás. No está encendida por defecto porque hacerlo
+> sería peor: un servidor **sin** proxy delante creería la cabecera `X-Forwarded-For` que le mande
+> cualquiera, y los límites se saltarían mandando una IP inventada en cada intento. El arranque
+> imprime cuál de los dos modos está activo — miralo en `pm2 logs`.
+
+> **`DM_RETENTION_DAYS` es el techo de la base de datos.** Las salas ya se recortan solas a 500
+> mensajes y las fotos vencen por TTL, pero los privados no tenían ningún límite: eran el único
+> lugar donde se podía escribir para siempre. Ahora se borran a los 90 días y se guardan como
+> mucho 500 por conversación. Si tu chat es de uso personal y querés conservar todo, poné
+> `DM_RETENTION_DAYS=0` — pero entonces vigilá el tamaño de `data/chat.db`.
 
 > **`PHOTO_DISK_LIMIT_MB` es el freno de mano contra el disco lleno.** Ponelo en función de lo
 > que tenga el VPS: si el disco es de 25 GB, 500 MB es holgado. Cuando la carpeta llega al
@@ -159,16 +176,20 @@ pm2 restart chatnopolis
 
 ## Endurecimiento pendiente (ideas futuras)
 
-- Rate limiting en `/api/login` (fuerza bruta contra el admin) y `/api/register` (spam de
-  cuentas), p. ej. con `express-rate-limit`. `/api/upload` ya tiene el suyo.
-- Límite de conexiones simultáneas por IP: hoy un script puede abrir muchas sesiones de
-  invitado con nicks distintos. Las cuotas de subida y el techo de disco ya acotan el daño,
-  pero limitar por IP requiere leer `X-Forwarded-For` y `app.set('trust proxy', 1)`.
-- Throttle de mensajes por socket: un bucle de `chatMessage` inunda la sala y, con el
-  límite de 500 mensajes, empuja el historial real fuera de la ventana.
-- `multer` 1.x está EOL con CVEs de DoS por multipart malformado: subir a 2.x.
-- `helmet` para las cabeceras de seguridad.
+Ya hecho: rate limiting en `/api/login` y `/api/register`, límite de ritmo de conexiones y de
+mensajes por socket, techo de retención para los privados y `nosniff` en `/uploads`.
+Ver la sección *Límites de frecuencia* de CLAUDE.md. Queda:
+
+- **`requireAuth` no revalida contra la base**: confía en lo que dice el token. Un admin baneado
+  conserva el panel por REST hasta que el token expira (7 días). El socket sí lo chequea. Se
+  arregla consultando `users.findByNick()` + `banStatus()` dentro del middleware.
+- `helmet` para el resto de las cabeceras de seguridad (CSP, HSTS, referrer-policy).
+- Validar las fotos por **magic bytes**, no solo por el `Content-Type` que declara quien sube.
+- `multer` 1.x está EOL: subir a 2.x.
+- Tokens de sesión más cortos con renovación, y una forma de invalidarlos al banear.
 - Verificar que el admin de producción **no** haya quedado con la contraseña por defecto
   (pasa si el primer arranque fue sin `ADMIN_PASSWORD`): probá `admin` / `admin123` en el
   login; si entra, hay que cambiarla.
 - Servir `uploads/` desde nginx directamente para quitarle carga a Node.
+- Si aparece spam de bots pese a los límites: un desafío tipo "no soy un robot" en el registro
+  y en la entrada como invitado (Cloudflare Turnstile es la opción sin costo ni tracking).

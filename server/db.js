@@ -167,9 +167,15 @@ const rooms = {
 const ROOM_HISTORY_LIMIT = Number(process.env.ROOM_HISTORY_LIMIT) || 500;
 // No podamos en cada mensaje: dejamos que se acumule este colchón primero.
 const PRUNE_SLACK = 50;
+// Cuántos privados se conservan por conversación. Los DM no tienen sala, así que
+// no los alcanza la poda de arriba: sin este tope la tabla `messages` es el único
+// lugar de la app donde se puede escribir sin ningún límite. `dmHistory` manda 50
+// y no hay paginación en la UI, así que 500 es de sobra.
+const DM_PAIR_LIMIT = Number(process.env.DM_PAIR_LIMIT) || 500;
 
 const messages = {
   ROOM_HISTORY_LIMIT,
+  DM_PAIR_LIMIT,
 
   saveRoom: (room, sender, text, imageUrl) =>
     db.prepare('INSERT INTO messages (room, sender, text, image_url) VALUES (?, ?, ?, ?)')
@@ -216,6 +222,61 @@ const messages = {
       .all(room, cutoff.id)
       .map((r) => r.image_url);
     db.prepare('DELETE FROM messages WHERE room = ? AND id < ?').run(room, cutoff.id);
+    return orphans;
+  },
+
+  // Los dos frenos de los privados. Van en el barrido de cleanup.js y no en el
+  // camino de cada mensaje: cuestan un recorrido de la tabla y no hay ninguna
+  // urgencia en que se apliquen al instante.
+
+  // Por antigüedad: borra los privados anteriores al corte y devuelve las URLs de
+  // las fotos que se van con ellos.
+  pruneDmsOlderThan: (cutoff) => {
+    const orphans = db
+      .prepare(
+        'SELECT image_url FROM messages WHERE room IS NULL AND created_at <= ? AND image_url IS NOT NULL'
+      )
+      .all(cutoff)
+      .map((r) => r.image_url);
+    db.prepare('DELETE FROM messages WHERE room IS NULL AND created_at <= ?').run(cutoff);
+    return orphans;
+  },
+
+  // Por conversación: deja como mucho `keep` mensajes en cada charla. El par se
+  // ordena con MIN/MAX (la versión de dos argumentos, que es la escalar) para que
+  // "a le escribe a b" y "b le escribe a a" cuenten como la misma conversación.
+  pruneDmPairs: (keep = DM_PAIR_LIMIT) => {
+    const pairs = db
+      .prepare(`
+        SELECT MIN(sender, recipient) AS a, MAX(sender, recipient) AS b, COUNT(*) AS n
+        FROM messages WHERE room IS NULL AND recipient IS NOT NULL
+        GROUP BY a, b HAVING n > ?
+      `)
+      .all(keep);
+
+    const cutoffFor = db.prepare(`
+      SELECT id FROM messages
+      WHERE room IS NULL AND ((sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?))
+      ORDER BY id DESC LIMIT 1 OFFSET ?
+    `);
+    const imagesBefore = db.prepare(`
+      SELECT image_url FROM messages
+      WHERE room IS NULL AND id < ? AND image_url IS NOT NULL
+        AND ((sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?))
+    `);
+    const deleteBefore = db.prepare(`
+      DELETE FROM messages
+      WHERE room IS NULL AND id < ?
+        AND ((sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?))
+    `);
+
+    const orphans = [];
+    for (const { a, b } of pairs) {
+      const cutoff = cutoffFor.get(a, b, b, a, keep - 1);
+      if (!cutoff) continue;
+      imagesBefore.all(cutoff.id, a, b, b, a).forEach((r) => orphans.push(r.image_url));
+      deleteBefore.run(cutoff.id, a, b, b, a);
+    }
     return orphans;
   },
 

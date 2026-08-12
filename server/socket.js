@@ -2,6 +2,14 @@ const { users, rooms, messages, guestBans } = require('./db');
 const { verifyToken } = require('./auth');
 const { pruneRoom } = require('./cleanup');
 const { canonicalNick } = require('./nicks');
+const {
+  clientIp,
+  allowConnection,
+  allowMessage,
+  allowQuery,
+  shouldWarn,
+  forgetSocket,
+} = require('./ratelimit');
 
 const usersOnline = {}; // { socketId: { username, canon, role, room, isMuted } }
 
@@ -15,10 +23,22 @@ const guestNicks = new Map();
 // Duraciones de ban aceptadas, en minutos. Cualquier otro valor => permanente.
 const BAN_DURATIONS = [10, 60, 240];
 
+// El mismo tope que el regex de nicks del handshake y que /register. Lo usamos
+// para descartar destinatarios de privados que no pueden ser nadie.
+const MAX_NICK_LENGTH = 20;
+
 function setupSocket(io) {
   // Autenticación en el handshake: token JWT (registrados) o username (invitados).
   // El rol NUNCA viene del cliente — se deriva del token o se fuerza 'guest'.
   io.use((socket, next) => {
+    // Lo primero, antes de verificar nada: comprobar el token o buscar en la base
+    // cuesta trabajo, y un bucle que abre conexiones sin parar nos lo haría pagar
+    // en cada intento. Es un límite de ritmo, no de sesiones abiertas (una oficina
+    // entera comparte una IP).
+    if (!allowConnection(clientIp(socket.handshake))) {
+      return next(new Error('Demasiadas conexiones desde tu red. Esperá un minuto.'));
+    }
+
     const { token, username } = socket.handshake.auth || {};
 
     if (token) {
@@ -68,6 +88,7 @@ function setupSocket(io) {
 
   io.on('connection', (socket) => {
     socket.on('join', ({ room } = {}) => {
+      if (!allowQuery(socket.id)) return;
       const roomId = rooms.find(room) ? room : 'general';
       const me = socket.user;
 
@@ -104,6 +125,7 @@ function setupSocket(io) {
       if (user.isMuted) {
         return socket.emit('message', system('Estás silenciado.', 'system-error'));
       }
+      if (!canSend(socket)) return;
 
       const cleanText = typeof text === 'string' ? text.trim().slice(0, 2000) : '';
 
@@ -137,15 +159,29 @@ function setupSocket(io) {
         return socket.emit('message', system('Estás silenciado.', 'system-error'));
       }
 
+      if (!canSend(socket)) return;
+
       const cleanText = typeof text === 'string' ? text.trim().slice(0, 2000) : '';
       const cleanImage = validImageUrl(imageUrl);
       if (!cleanText && !cleanImage) return;
-      if (typeof targetUsername !== 'string' || !targetUsername.trim()) return;
+
+      // El destinatario no puede ser texto libre. Antes, un nombre inventado se
+      // guardaba igual: cada emit escribía una fila que nadie iba a leer nunca, con
+      // un `to` tan largo como el cliente quisiera (el tope de Socket.IO es 1 MB) y
+      // sin nada que la podara después. Tiene que ser alguien real: una cuenta
+      // registrada, o un invitado que esté conectado ahora mismo.
+      const target = typeof targetUsername === 'string' ? targetUsername.trim() : '';
+      if (!target || target.length > MAX_NICK_LENGTH) return;
+
+      const account = users.findByNick(target);
+      const targetSocketIds = socketIdsFor(target);
+      if (!account && targetSocketIds.length === 0) {
+        return socket.emit('message', system(`No encontramos a ${target}.`, 'system-error'));
+      }
 
       // Guardamos el nombre tal como está en la cuenta, no como lo escribió el
       // cliente: si no, el historial se partiría entre "Maria" y "maria".
-      const to = users.findByNick(targetUsername)?.username || targetUsername.trim();
-      const targetSocketIds = socketIdsFor(to);
+      const to = account?.username || target;
       const data = {
         username: user.username,
         text: cleanText,
@@ -168,6 +204,7 @@ function setupSocket(io) {
     socket.on('dm:history', ({ withUser } = {}) => {
       const user = usersOnline[socket.id];
       if (!user || typeof withUser !== 'string') return;
+      if (!allowQuery(socket.id)) return;
 
       // El historial de DM solo se entrega entre cuentas registradas. La identidad
       // de un invitado es su nick y cualquiera puede reclamarlo después de que se
@@ -238,6 +275,8 @@ function setupSocket(io) {
     });
 
     socket.on('disconnect', () => {
+      forgetSocket(socket.id);
+
       // Liberar la reserva del nick, pero solo si sigue siendo nuestra: si el
       // invitado ya se reconectó con otro socket, la reserva es de ese.
       const canon = socket.user?.canon;
@@ -259,6 +298,17 @@ function setupSocket(io) {
 
 function system(text, type = 'system') {
   return { username: 'Sistema', text, type, createdAt: new Date().toISOString() };
+}
+
+// ¿Puede este socket mandar un mensaje ahora? Si va demasiado rápido avisa, pero
+// como mucho una vez cada tanto (shouldWarn): responder a cada mensaje bloqueado
+// convertiría un flood de entrada en un flood de salida.
+function canSend(socket) {
+  if (allowMessage(socket.id)) return true;
+  if (shouldWarn(socket.id)) {
+    socket.emit('message', system('Vas demasiado rápido. Esperá unos segundos.', 'system-error'));
+  }
+  return false;
 }
 
 // El `data` de un error de handshake llega al cliente como err.data
