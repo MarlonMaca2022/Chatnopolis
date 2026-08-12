@@ -187,9 +187,11 @@ Ver la sección *Límites de frecuencia* de CLAUDE.md. Queda:
 - Validar las fotos por **magic bytes**, no solo por el `Content-Type` que declara quien sube.
 - `multer` 1.x está EOL: subir a 2.x.
 - Tokens de sesión más cortos con renovación, y una forma de invalidarlos al banear.
-- Verificar que el admin de producción **no** haya quedado con la contraseña por defecto
-  (pasa si el primer arranque fue sin `ADMIN_PASSWORD`): probá `admin` / `admin123` en el
-  login; si entra, hay que cambiarla.
+- **No existe forma de cambiar una contraseña desde la app** — no hay endpoint ni pantalla.
+  De ahí que `ADMIN_PASSWORD` haya que acertarla en el primer arranque: si el admin quedó
+  con `admin123` (que es pública), las únicas salidas son borrar `data/chat.db` y empezar
+  de nuevo, o editar el hash a mano con `sqlite3`. Falta un `POST /api/password` que pida
+  la contraseña actual, y que el admin pueda resetear la de otro.
 - Servir `uploads/` desde nginx directamente para quitarle carga a Node.
 - Si aparece spam de bots pese a los límites: un desafío tipo "no soy un robot" en el registro
   y en la entrada como invitado (Cloudflare Turnstile es la opción sin costo ni tracking).
