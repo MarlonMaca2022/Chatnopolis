@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import { api } from '../lib/api';
 import { setSession } from '../lib/session';
+import { LEGAL } from '../lib/legal';
 import ThemeToggle from '../components/ThemeToggle.jsx';
+import LegalFooter from '../components/LegalFooter.jsx';
 
 const inputClass =
   'w-full px-4 py-3 rounded-lg border border-edge bg-muted text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-accent hover:bg-surface transition-colors';
@@ -16,6 +18,33 @@ const TABS = [
   { id: 'register', label: 'Registro' },
 ];
 
+// Declaración de edad + aceptación. Los links van con <a target="_blank"> y no con
+// <Link>: los campos del formulario no son estado controlado (se leen del DOM al
+// enviar), así que navegar en la misma pestaña perdería lo que la persona escribió.
+function ConsentCheck({ checked, onChange }) {
+  return (
+    <label className="flex items-start gap-3 text-sm text-ink-soft cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 rounded border-edge accent-accent cursor-pointer"
+      />
+      <span className="leading-snug">
+        Confirmo que tengo {LEGAL.edadMinima} años o más y acepto los{' '}
+        <a href="/terminos" target="_blank" rel="noreferrer" className="text-accent hover:underline">
+          Términos
+        </a>{' '}
+        y la{' '}
+        <a href="/privacidad" target="_blank" rel="noreferrer" className="text-accent hover:underline">
+          Política de privacidad
+        </a>
+        .
+      </span>
+    </label>
+  );
+}
+
 export default function AuthPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState('guest');
@@ -24,6 +53,10 @@ export default function AuthPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  // El servidor pidió re-aceptar los términos en este login (cuenta vieja o versión
+  // nueva). Devolvió 200 pero SIN token, así que no hay sesión hasta que se acepte.
+  const [termsOutdated, setTermsOutdated] = useState(false);
 
   useEffect(() => {
     api.getRooms().then(setRooms).catch(() => {});
@@ -39,22 +72,39 @@ export default function AuthPage() {
     setTab(id);
     setError('');
     setNotice('');
+    setAccepted(false);
+    setTermsOutdated(false);
   }
+
+  const consentMissing = `Tienes que confirmar que eres mayor de ${LEGAL.edadMinima} y aceptar los términos.`;
 
   async function handleGuest(e) {
     e.preventDefault();
     const username = e.target.username.value.trim();
     if (!username) return;
-    setSession({ username, role: 'guest', roomId });
+    if (!accepted) return setError(consentMissing);
+    // El flag viaja al handshake del socket (ver ChatPage), que es quien lo exige.
+    setSession({ username, role: 'guest', roomId, acceptedTerms: true });
     navigate('/chat');
   }
 
   async function handleLogin(e) {
     e.preventDefault();
+    if (termsOutdated && !accepted) return setError(consentMissing);
     setBusy(true);
     setError('');
     try {
-      const data = await api.login(e.target.username.value.trim(), e.target.password.value);
+      const data = await api.login(
+        e.target.username.value.trim(),
+        e.target.password.value,
+        termsOutdated ? accepted : undefined
+      );
+      // Sin token: las credenciales estaban bien, pero faltan los términos.
+      if (data.termsOutdated) {
+        setTermsOutdated(true);
+        setNotice('Actualizamos los términos. Léelos y confirma para continuar.');
+        return;
+      }
       setSession({ token: data.token, username: data.username, role: data.role, roomId });
       navigate('/chat');
     } catch (err) {
@@ -70,6 +120,7 @@ export default function AuthPage() {
     if (form.password.value !== form.confirmPassword.value) {
       return setError('Las contraseñas no coinciden.');
     }
+    if (!accepted) return setError(consentMissing);
     setBusy(true);
     setError('');
     try {
@@ -79,9 +130,11 @@ export default function AuthPage() {
         name: form.name.value.trim(),
         email: form.email.value.trim(),
         country: form.country.value.trim(),
+        acceptedTerms: accepted,
       });
       setNotice('Cuenta creada exitosamente. ¡Ahora inicia sesión!');
       setTab('login');
+      setAccepted(false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -137,6 +190,7 @@ export default function AuthPage() {
               <label className="block text-sm font-medium text-ink-soft mb-1">Tu Nick / Apodo</label>
               <input name="username" required placeholder="Ej: Viajero_Astral" className={inputClass} />
             </div>
+            <ConsentCheck checked={accepted} onChange={setAccepted} />
             <button
               type="submit"
               className="w-full py-3 px-4 bg-accent hover:bg-accent-strong text-white font-semibold rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200 flex justify-center items-center gap-2"
@@ -157,6 +211,8 @@ export default function AuthPage() {
               <label className="block text-sm font-medium text-ink-soft mb-1">Contraseña</label>
               <input name="password" type="password" required placeholder="••••••••" className={inputClass} />
             </div>
+            {/* Solo aparece si el servidor pidió re-aceptar: al usuario habitual no lo molesta. */}
+            {termsOutdated && <ConsentCheck checked={accepted} onChange={setAccepted} />}
             <button
               type="submit"
               disabled={busy}
@@ -197,6 +253,7 @@ export default function AuthPage() {
                 <input name="confirmPassword" type="password" required placeholder="••••••••" className={smallInputClass} />
               </div>
             </div>
+            <ConsentCheck checked={accepted} onChange={setAccepted} />
             <button
               type="submit"
               disabled={busy}
@@ -217,6 +274,8 @@ export default function AuthPage() {
             {notice}
           </div>
         )}
+
+        <LegalFooter />
       </div>
     </div>
   );

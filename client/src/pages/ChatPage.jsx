@@ -9,6 +9,7 @@ import MessageInput from '../components/MessageInput.jsx';
 import UserList from '../components/UserList.jsx';
 import AdminModal from '../components/AdminModal.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
+import LegalFooter from '../components/LegalFooter.jsx';
 
 const BAN_LABELS = { 10: '10 minutos', 60: '1 hora', 240: '4 horas' };
 
@@ -57,7 +58,12 @@ export default function ChatPage() {
     }).catch(() => {});
 
     const socket = io({
-      auth: session.token ? { token: session.token } : { username: session.username },
+      // El invitado no tiene cuenta donde guardar la aceptación: su consentimiento
+      // viaja acá y el handshake lo exige (ver server/socket.js). Una sesión vieja,
+      // guardada antes de que existieran los términos, es rechazada y vuelve al login.
+      auth: session.token
+        ? { token: session.token }
+        : { username: session.username, terms: session.acceptedTerms === true },
     });
     socketRef.current = socket;
 
@@ -308,6 +314,8 @@ export default function ChatPage() {
           <LogOut size={18} />
         </button>
       </div>
+
+      <LegalFooter compact className="bg-app" />
     </>
   );
 

@@ -30,6 +30,7 @@ server/
   index.js     Arranque Express + Socket.IO, sirve /uploads y client/dist (SPA fallback)
   db.js        SQLite (node:sqlite): tablas + helpers users/rooms/messages/guestBans + seed inicial
   auth.js      Firmar/verificar tokens JWT; exige JWT_SECRET o aborta el arranque
+  legal.js     TERMS_VERSION + edad mínima + los textos de rechazo por falta de consentimiento
   nicks.js     canonicalNick() — forma canónica de un nombre; TODA comparación de identidad pasa por acá
   routes.js    API REST: login, register, rooms, users, upload de fotos + middleware requireAuth/requireAdmin
   ratelimit.js Límites por frecuencia: REST (login/register/api) y chat en vivo (mensajes, consultas, conexiones)
@@ -37,10 +38,12 @@ server/
   uploads.js   UPLOADS_DIR + removeUploadFile() (único módulo que borra fotos) + cuotas y techo de disco
   cleanup.js   Poda de historial y barrido de fotos vencidas/huérfanas (startCleanupJobs)
 client/
-  src/pages/         AuthPage (invitado/login/registro), ChatPage
-  src/components/     MessageList, MessageInput (fotos solo en DM), UserList, AdminModal
+  src/pages/         AuthPage (invitado/login/registro), ChatPage, LegalPage (renderiza las 3 legales)
+  src/components/     MessageList, MessageInput (fotos solo en DM), UserList, AdminModal,
+                     AgeGate (aviso 18+), LegalFooter
   src/lib/           api.js (fetch wrapper + uploadPhoto), session.js (token en localStorage),
-                     compressImage.js (redimensiona/reencoda antes de subir)
+                     compressImage.js (redimensiona/reencoda antes de subir),
+                     legal.js (texto de términos/privacidad/seguridad + responsable legal)
   vite.config.js     dev server + proxy
 data/chat.db   Base de datos SQLite (se crea sola; gitignored)
 uploads/       Fotos subidas (gitignored)
@@ -77,6 +80,22 @@ Un invitado no tiene cuenta: **su identidad es el nombre**. De ahí salen tres r
 - **Banear** — duraciones 10 min / 1 h / 4 h / permanente (`BAN_DURATIONS` en `server/socket.js`, validadas server-side). Registrados: `users.is_banned` + `banned_until`. Invitados: fila en `guest_bans` con `expires_at`. En ambos, **`NULL` en la fecha = permanente**. Se banea la **identidad, no la IP** (el proyecto no captura IPs): el ban aguanta las variantes del mismo nombre porque va por canónica (ver *Identidad y nicks*), pero un invitado sigue evadiéndolo si elige un nick **realmente** distinto.
 - **Vencimiento perezoso**: no hay cron ni timers. `users.banStatus()` y `guestBans.status()` evalúan la fecha al leer y borran el registro vencido en el momento. Todo chequeo de ban debe pasar por esos helpers, nunca leer `is_banned` directo.
 - **Desbanear / desilenciar** viven en el `AdminModal` vía REST (`POST /api/users/:u/unban`, `/unmute`, `DELETE /api/guest-bans/:u`), no en la lista de usuarios en línea: un baneado no está conectado. Los invitados baneados tienen su propia sección porque no existen en la tabla `users`.
+
+## Legales, edad y consentimiento — IMPORTANTE
+
+El chat permite **contenido adulto entre adultos** en privado, así que la edad mínima (18) no es un adorno. Todo lo que la sostiene está en `server/legal.js` (`TERMS_VERSION`, `MIN_AGE`, los dos mensajes de rechazo) y el texto que ve el usuario en `client/src/lib/legal.js`.
+
+- **El checkbox del formulario no vale nada por sí solo** — se evade con la consola. La declaración vale porque se exige en el servidor, por los **dos** caminos que existen: `POST /api/register` rechaza con 400 si falta `acceptedTerms === true`, y el **handshake de Socket.IO** rechaza al invitado si `auth.terms !== true`. Ese chequeo va **antes** del regex de nick: es un booleano, la comprobación más barata de todo el middleware.
+- **El cliente nunca conoce `TERMS_VERSION`.** Solo manda booleanos y el servidor estampa la versión vigente. Así no hay una constante duplicada entre `server/` y `client/` que se desincronice, y quién decidió qué texto se aceptó lo sabe siempre el servidor.
+- **Registrados: se persiste** (`users.accepted_terms_at` + `users.terms_version`). **Invitados: no.** Un invitado no tiene cuenta, y su nick lo puede reclamar otro cuando se va — una fila con ese nombre no identificaría a nadie. Su consentimiento viaja en cada handshake y vale para esa sesión.
+- **Subir `TERMS_VERSION` re-pide la aceptación sola**, sin migración ni aviso manual. `POST /api/login` devuelve **200 con `termsOutdated: true` y sin token** (sin token no hay sesión, así que el paso no se saltea); `AuthPage` muestra el checkbox dentro del formulario de login y reenvía con `acceptedTerms: true`. El handshake de registrados hace el mismo chequeo, para que un **token ya firmado** antes del cambio no siga entrando. Las cuentas anteriores a esta función tienen `terms_version` en `NULL` y caen por el mismo camino, que es lo que se busca.
+- El **único** dato que se sincroniza a mano: `LEGAL.actualizado` (cliente) tiene que coincidir con `TERMS_VERSION` (servidor). Uno decide, el otro se muestra.
+- **`AgeGate`** envuelve la ruta `/` en `App.jsx`, no el JSX de `AuthPage`. Es un cartel disuasorio con `localStorage['chatnopolis-age-ack']`; solo persiste el "sí" (bloquear el navegador para siempre por un clic mal dado sería peor). La declaración que cuenta sigue siendo el checkbox.
+- Las tres páginas legales son **rutas públicas** (`/terminos`, `/privacidad`, `/seguridad`), fuera de `RequireSession` — tienen que leerse sin entrar. El fallback SPA de `server/index.js` ya las sirve: **no hace falta tocar el backend para agregar otra**. Un solo componente (`LegalPage`) renderiza cualquier entrada de `LEGAL_PAGES`, así que sumar una página es agregar una entrada al objeto y una `<Route>`.
+- **El responsable legal es una sola constante** (`LEGAL` en `client/src/lib/legal.js`): nombre, email de contacto y edad mínima. Hoy es genérico y sin jurisdicción, por decisión de producto. Nombrar una razón social y un país es cambiar ese objeto — el texto de las tres páginas ya lo interpola.
+- **La política de privacidad describe el sistema real, y eso es un compromiso**: si cambiás la retención (500 por sala, 90 días de DM, TTL de 24 h), o empezás a guardar IPs, o agregás analítica o un tercero, **hay que actualizar el texto en el mismo commit**. Una política que describe mal el sistema es peor que no tenerla.
+- El camino de reporte de esta ola es **el email** publicado en las tres páginas. No hay botón "Reportar" en la UI todavía: es una ola aparte.
+- `client/index.html` lleva `<meta name="rating" content="adult">` y la etiqueta RTA — es lo que leen los filtros de control parental. Si algún día se prohíbe el contenido explícito, esas dos líneas salen.
 
 ## Fotos / uploads — IMPORTANTE
 
