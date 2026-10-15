@@ -156,6 +156,8 @@ export default function ChatPage() {
 
   if (!session) return null;
 
+  const isAdmin = session.role === 'admin';
+
   function openDM(target) {
     setDms((prev) => (prev.includes(target) ? prev : [...prev, target]));
     setActiveView({ type: 'dm', target });
@@ -172,6 +174,9 @@ export default function ChatPage() {
   }
 
   function switchRoom(id) {
+    // Un usuario común se queda en la sala que eligió al entrar; solo el admin
+    // recorre las salas (server/socket.js reimpone la regla en `join`).
+    if (id !== roomId && !isAdmin) return;
     if (id !== roomId) {
       // El servidor sale de la sala anterior, entra a la nueva y reenvía historial
       socketRef.current?.emit('join', { room: id });
@@ -226,12 +231,20 @@ export default function ChatPage() {
 
   const activeMessages = chats[activeView.target] || [];
 
+  // Cada quien ve solo la sala que eligió al entrar; el admin las ve todas porque
+  // moderar es recorrerlas. Se arma a mano (y no filtrando `roomsMap`) para que la
+  // entrada esté desde el primer pintado, antes de que llegue GET /api/rooms.
+  // Sigue siendo un botón: estando en un DM es la forma de volver a la sala.
+  const visibleRooms = isAdmin
+    ? Object.entries(roomsMap)
+    : [[roomId, roomsMap[roomId] || roomId]];
+
   const sidebar = (
     <>
       <div className="p-6 border-b border-edge flex items-center justify-between">
         <h2 className="text-xl font-bold text-accent-ink">Chatnopolis</h2>
         <div className="flex items-center gap-3">
-          {session.role === 'admin' && (
+          {isAdmin && (
             <button
               onClick={() => setShowAdmin(true)}
               className="text-ink-faint hover:text-amber-500 transition"
@@ -245,9 +258,11 @@ export default function ChatPage() {
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto">
-        <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider mb-4">Salas</h3>
+        <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider mb-4">
+          {isAdmin ? 'Salas' : 'Tu sala'}
+        </h3>
         <ul className="space-y-1 mb-6">
-          {Object.entries(roomsMap).map(([id, name]) => {
+          {visibleRooms.map(([id, name]) => {
             const isActive = activeView.type === 'room' && roomId === id;
             return (
               <li key={id}>
@@ -382,7 +397,7 @@ export default function ChatPage() {
       <UserList
         users={onlineUsers}
         currentUsername={username}
-        isAdmin={session.role === 'admin'}
+        isAdmin={isAdmin}
         onOpenDM={openDM}
         onAdminAction={adminAction}
         open={showUsers}
