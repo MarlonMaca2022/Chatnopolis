@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { Hash, LogOut, Menu, Shield, User, ChevronRight, Users } from 'lucide-react';
+import { ArrowLeftRight, Hash, LogOut, Menu, Shield, User, ChevronRight, Users } from 'lucide-react';
 import { getSession, clearSession } from '../lib/session';
 import { api } from '../lib/api';
 import MessageList from '../components/MessageList.jsx';
@@ -43,6 +43,7 @@ export default function ChatPage() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showUsers, setShowUsers] = useState(false); // panel de usuarios en móvil
+  const [showRoomPicker, setShowRoomPicker] = useState(false); // "Cambiar" sala (no admin)
 
   const username = session?.username;
 
@@ -174,10 +175,9 @@ export default function ChatPage() {
   }
 
   function switchRoom(id) {
-    // Un usuario común se queda en la sala que eligió al entrar; solo el admin
-    // recorre las salas (server/socket.js reimpone la regla en `join`).
-    if (id !== roomId && !isAdmin) return;
+    setShowRoomPicker(false);
     if (id !== roomId) {
+      // Los DM abiertos (`dms`/`chats`) no se tocan: siguen vivos en cualquier sala
       // El servidor sale de la sala anterior, entra a la nueva y reenvía historial
       socketRef.current?.emit('join', { room: id });
       setRoomId(id);
@@ -231,13 +231,16 @@ export default function ChatPage() {
 
   const activeMessages = chats[activeView.target] || [];
 
-  // Cada quien ve solo la sala que eligió al entrar; el admin las ve todas porque
-  // moderar es recorrerlas. Se arma a mano (y no filtrando `roomsMap`) para que la
-  // entrada esté desde el primer pintado, antes de que llegue GET /api/rooms.
-  // Sigue siendo un botón: estando en un DM es la forma de volver a la sala.
+  // El usuario común ve su sala y despliega las demás con "Cambiar"; el admin las ve
+  // todas siempre porque moderar es recorrerlas. La sala propia se arma a mano (y no
+  // filtrando `roomsMap`) para que esté desde el primer pintado, antes de que llegue
+  // GET /api/rooms. Sigue siendo un botón: estando en un DM es la forma de volver.
   const visibleRooms = isAdmin
     ? Object.entries(roomsMap)
-    : [[roomId, roomsMap[roomId] || roomId]];
+    : [
+        [roomId, roomsMap[roomId] || roomId],
+        ...(showRoomPicker ? Object.entries(roomsMap).filter(([id]) => id !== roomId) : []),
+      ];
 
   const sidebar = (
     <>
@@ -258,9 +261,21 @@ export default function ChatPage() {
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto">
-        <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider mb-4">
-          {isAdmin ? 'Salas' : 'Tu sala'}
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider">
+            {isAdmin ? 'Salas' : 'Tu sala'}
+          </h3>
+          {!isAdmin && (
+            <button
+              onClick={() => setShowRoomPicker((v) => !v)}
+              className="flex items-center gap-1 text-xs font-medium text-accent-ink hover:text-accent transition"
+              aria-expanded={showRoomPicker}
+            >
+              <ArrowLeftRight size={12} />
+              {showRoomPicker ? 'Cancelar' : 'Cambiar'}
+            </button>
+          )}
+        </div>
         <ul className="space-y-1 mb-6">
           {visibleRooms.map(([id, name]) => {
             const isActive = activeView.type === 'room' && roomId === id;

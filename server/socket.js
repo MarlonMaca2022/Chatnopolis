@@ -101,19 +101,9 @@ function setupSocket(io) {
       const roomId = rooms.find(room) ? room : 'general';
       const me = socket.user;
 
-      // La sala se elige al entrar (el <select> de AuthPage) y ahí se queda: solo el
-      // admin recorre las salas. El cliente ya no muestra la lista al resto, pero eso
-      // se saltea desde la consola — el freno real es este. El primer `join` (no hay
-      // `prev`) siempre pasa: es el que fija la sala elegida, también al reconectar.
+      // Una sala a la vez por conexión: cambiar es salir de la anterior. Los privados
+      // no dependen de esto — van a la persona (socketIdsFor), no a la sala.
       const prev = usersOnline[socket.id];
-      if (prev && prev.room !== roomId && me.role !== 'admin') {
-        return socket.emit(
-          'message',
-          system('Solo un administrador puede cambiar de sala.', 'system-error')
-        );
-      }
-
-      // Salir de la sala anterior si cambia
       if (prev && prev.room !== roomId) {
         socket.leave(prev.room);
         updateRoomUsers(io, prev.room);
