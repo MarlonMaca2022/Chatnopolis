@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { ArrowLeftRight, Hash, LogOut, Menu, Shield, User, ChevronRight, Users } from 'lucide-react';
+import { ArrowLeftRight, Hash, LogOut, Menu, Shield, User, ChevronRight, Users, X } from 'lucide-react';
 import { getSession, clearSession } from '../lib/session';
 import { api } from '../lib/api';
 import MessageList from '../components/MessageList.jsx';
@@ -174,6 +174,21 @@ export default function ChatPage() {
     setShowUsers(false);
   }
 
+  // Cerrar solo la saca de la lista: `chats[target]` se conserva, así que reabrirla
+  // muestra lo hablado (para un invitado no hay historial en el servidor que lo
+  // recupere). Si el otro vuelve a escribir, el handler `message` la reabre sola.
+  function closeDM(target) {
+    setDms((prev) => prev.filter((u) => u !== target));
+    setUnread((prev) => {
+      const next = new Set(prev);
+      next.delete(target);
+      return next;
+    });
+    if (activeView.type === 'dm' && activeView.target === target) {
+      setActiveView({ type: 'room', target: roomId });
+    }
+  }
+
   function switchRoom(id) {
     setShowRoomPicker(false);
     if (id !== roomId) {
@@ -309,7 +324,7 @@ export default function ChatPage() {
               <li
                 key={dmUser}
                 onClick={() => openDM(dmUser)}
-                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition ${
+                className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer transition ${
                   isActive
                     ? 'bg-accent-soft text-accent-ink font-bold border border-accent/40 shadow-sm'
                     : 'hover:bg-muted text-ink-soft'
@@ -321,7 +336,24 @@ export default function ChatPage() {
                   </div>
                   <span className="truncate max-w-[120px]">{dmUser}</span>
                 </div>
-                {unread.has(dmUser) && <span className="w-2 h-2 bg-rose-500 rounded-full" />}
+                <div className="flex items-center gap-2 shrink-0">
+                  {unread.has(dmUser) && <span className="w-2 h-2 bg-rose-500 rounded-full" />}
+                  {/* Con mouse aparece al pasar por encima; en el celular no hay hover,
+                      así que se ve en la conversación abierta (tocarla la abre). */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeDM(dmUser);
+                    }}
+                    className={`p-1 rounded text-ink-faint hover:text-red-500 hover:bg-muted transition focus-visible:opacity-100 ${
+                      isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}
+                    title="Cerrar conversación"
+                    aria-label={`Cerrar conversación con ${dmUser}`}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               </li>
             );
           })}
