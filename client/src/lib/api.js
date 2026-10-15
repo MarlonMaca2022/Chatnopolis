@@ -17,7 +17,10 @@ async function request(path, options = {}) {
 
 export const api = {
   getRooms: () => request('/rooms'),
-  login: (username, password) => request('/login', { method: 'POST', body: { username, password } }),
+  // acceptedTerms solo hace falta cuando el servidor pidió re-aceptar los términos
+  // (respuesta con termsOutdated). En un login normal viaja como undefined.
+  login: (username, password, acceptedTerms) =>
+    request('/login', { method: 'POST', body: { username, password, acceptedTerms } }),
   register: (payload) => request('/register', { method: 'POST', body: payload }),
   createRoom: (name) => request('/rooms', { method: 'POST', body: { name } }),
   deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),

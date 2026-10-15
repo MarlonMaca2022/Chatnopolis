@@ -2,6 +2,7 @@ const { users, rooms, messages, guestBans } = require('./db');
 const { verifyToken } = require('./auth');
 const { pruneRoom } = require('./cleanup');
 const { canonicalNick } = require('./nicks');
+const { TERMS_VERSION, CONSENT_REQUIRED, TERMS_OUTDATED } = require('./legal');
 const {
   clientIp,
   allowConnection,
@@ -39,7 +40,7 @@ function setupSocket(io) {
       return next(new Error('Demasiadas conexiones desde tu red. Esperá un minuto.'));
     }
 
-    const { token, username } = socket.handshake.auth || {};
+    const { token, username, terms } = socket.handshake.auth || {};
 
     if (token) {
       const payload = verifyToken(token);
@@ -48,6 +49,9 @@ function setupSocket(io) {
       if (!dbUser) return next(new Error('Sesión inválida o expirada'));
       const ban = users.banStatus(dbUser.username);
       if (ban.banned) return next(new Error(banMessage(ban.until, 'Tu cuenta está baneada')));
+      // Un token firmado antes de que cambiaran los términos seguiría siendo válido:
+      // acá es donde esa sesión se corta y vuelve al login a aceptarlos.
+      if (dbUser.terms_version !== TERMS_VERSION) return next(new Error(TERMS_OUTDATED));
       // Una cuenta sí puede tener varias sesiones abiertas (celular + compu): los
       // DM y la moderación se aplican a todas (ver socketIdsFor).
       socket.user = {
@@ -58,6 +62,11 @@ function setupSocket(io) {
       };
       return next();
     }
+
+    // El invitado no tiene cuenta donde guardar la aceptación, así que su
+    // consentimiento viaja en cada handshake y vale para esa sesión. Va primero
+    // porque es la comprobación más barata: un booleano, sin tocar la base.
+    if (terms !== true) return next(new Error(CONSENT_REQUIRED));
 
     const nick = (username || '').trim();
     if (!/^[a-zA-Z0-9_\-áéíóúñÁÉÍÓÚÑ ]{3,20}$/.test(nick)) {
@@ -92,7 +101,8 @@ function setupSocket(io) {
       const roomId = rooms.find(room) ? room : 'general';
       const me = socket.user;
 
-      // Salir de la sala anterior si cambia
+      // Una sala a la vez por conexión: cambiar es salir de la anterior. Los privados
+      // no dependen de esto — van a la persona (socketIdsFor), no a la sala.
       const prev = usersOnline[socket.id];
       if (prev && prev.room !== roomId) {
         socket.leave(prev.room);

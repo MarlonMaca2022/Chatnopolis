@@ -7,6 +7,7 @@ const { signToken, verifyToken } = require('./auth');
 const { syncMuted, sessionForSocket } = require('./socket');
 const { UPLOADS_DIR, uploadUrl, checkQuota, noteUploaded } = require('./uploads');
 const { loginLimiter, registerLimiter } = require('./ratelimit');
+const { TERMS_VERSION, CONSENT_REQUIRED } = require('./legal');
 
 const router = express.Router();
 
@@ -37,7 +38,7 @@ function requireAdmin(req, res, next) {
 
 // --- Auth ---
 router.post('/login', loginLimiter, (req, res) => {
-  const { username, password } = req.body || {};
+  const { username, password, acceptedTerms } = req.body || {};
   // findByNick: entrar como "Admin" o "ADMIN" es entrar como "admin"
   const user = username && users.findByNick(username);
 
@@ -58,6 +59,17 @@ router.post('/login', loginLimiter, (req, res) => {
     });
   }
 
+  // Términos desactualizados (o cuenta anterior a que existieran): se le piden acá.
+  // La clave es que en ese caso NO se firma token — sin token no hay sesión, así que
+  // el paso no se saltea desde el cliente. Es un 200, no un error, así que tampoco
+  // le come intentos del loginLimiter (que tiene skipSuccessfulRequests).
+  if (user.terms_version !== TERMS_VERSION) {
+    if (acceptedTerms !== true) {
+      return res.json({ success: true, termsOutdated: true, message: CONSENT_REQUIRED });
+    }
+    users.acceptTerms(user.username, TERMS_VERSION);
+  }
+
   res.json({
     success: true,
     token: signToken(user),
@@ -68,10 +80,15 @@ router.post('/login', loginLimiter, (req, res) => {
 });
 
 router.post('/register', registerLimiter, (req, res) => {
-  const { username, password, name, email, country } = req.body || {};
+  const { username, password, name, email, country, acceptedTerms } = req.body || {};
 
   if (!username || !password || !name || !email) {
     return res.status(400).json({ success: false, message: 'Faltan datos obligatorios' });
+  }
+  // El checkbox del formulario no alcanza: se evade con la consola del navegador.
+  // La declaración de edad y la aceptación valen porque se exigen acá.
+  if (acceptedTerms !== true) {
+    return res.status(400).json({ success: false, message: CONSENT_REQUIRED });
   }
   // Campos de texto libre: sin un techo, un POST puede meter megabytes por fila.
   if (name.length > 60 || email.length > 120 || (country && country.length > 60)) {
@@ -100,6 +117,7 @@ router.post('/register', registerLimiter, (req, res) => {
     name,
     email,
     country: country || null,
+    termsVersion: TERMS_VERSION,
   });
 
   res.json({ success: true, username, role: 'user' });

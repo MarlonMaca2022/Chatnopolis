@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { Hash, LogOut, Menu, Shield, User, ChevronRight, Users } from 'lucide-react';
+import { ArrowLeftRight, Hash, LogOut, Menu, Shield, User, ChevronRight, Users } from 'lucide-react';
 import { getSession, clearSession } from '../lib/session';
 import { api } from '../lib/api';
 import MessageList from '../components/MessageList.jsx';
@@ -9,6 +9,7 @@ import MessageInput from '../components/MessageInput.jsx';
 import UserList from '../components/UserList.jsx';
 import AdminModal from '../components/AdminModal.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
+import LegalFooter from '../components/LegalFooter.jsx';
 
 const BAN_LABELS = { 10: '10 minutos', 60: '1 hora', 240: '4 horas' };
 
@@ -42,6 +43,7 @@ export default function ChatPage() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showUsers, setShowUsers] = useState(false); // panel de usuarios en móvil
+  const [showRoomPicker, setShowRoomPicker] = useState(false); // "Cambiar" sala (no admin)
 
   const username = session?.username;
 
@@ -57,7 +59,12 @@ export default function ChatPage() {
     }).catch(() => {});
 
     const socket = io({
-      auth: session.token ? { token: session.token } : { username: session.username },
+      // El invitado no tiene cuenta donde guardar la aceptación: su consentimiento
+      // viaja acá y el handshake lo exige (ver server/socket.js). Una sesión vieja,
+      // guardada antes de que existieran los términos, es rechazada y vuelve al login.
+      auth: session.token
+        ? { token: session.token }
+        : { username: session.username, terms: session.acceptedTerms === true },
     });
     socketRef.current = socket;
 
@@ -150,6 +157,8 @@ export default function ChatPage() {
 
   if (!session) return null;
 
+  const isAdmin = session.role === 'admin';
+
   function openDM(target) {
     setDms((prev) => (prev.includes(target) ? prev : [...prev, target]));
     setActiveView({ type: 'dm', target });
@@ -166,7 +175,9 @@ export default function ChatPage() {
   }
 
   function switchRoom(id) {
+    setShowRoomPicker(false);
     if (id !== roomId) {
+      // Los DM abiertos (`dms`/`chats`) no se tocan: siguen vivos en cualquier sala
       // El servidor sale de la sala anterior, entra a la nueva y reenvía historial
       socketRef.current?.emit('join', { room: id });
       setRoomId(id);
@@ -220,12 +231,23 @@ export default function ChatPage() {
 
   const activeMessages = chats[activeView.target] || [];
 
+  // El usuario común ve su sala y despliega las demás con "Cambiar"; el admin las ve
+  // todas siempre porque moderar es recorrerlas. La sala propia se arma a mano (y no
+  // filtrando `roomsMap`) para que esté desde el primer pintado, antes de que llegue
+  // GET /api/rooms. Sigue siendo un botón: estando en un DM es la forma de volver.
+  const visibleRooms = isAdmin
+    ? Object.entries(roomsMap)
+    : [
+        [roomId, roomsMap[roomId] || roomId],
+        ...(showRoomPicker ? Object.entries(roomsMap).filter(([id]) => id !== roomId) : []),
+      ];
+
   const sidebar = (
     <>
       <div className="p-6 border-b border-edge flex items-center justify-between">
         <h2 className="text-xl font-bold text-accent-ink">Chatnopolis</h2>
         <div className="flex items-center gap-3">
-          {session.role === 'admin' && (
+          {isAdmin && (
             <button
               onClick={() => setShowAdmin(true)}
               className="text-ink-faint hover:text-amber-500 transition"
@@ -239,9 +261,23 @@ export default function ChatPage() {
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto">
-        <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider mb-4">Salas</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider">
+            {isAdmin ? 'Salas' : 'Tu sala'}
+          </h3>
+          {!isAdmin && (
+            <button
+              onClick={() => setShowRoomPicker((v) => !v)}
+              className="flex items-center gap-1 text-xs font-medium text-accent-ink hover:text-accent transition"
+              aria-expanded={showRoomPicker}
+            >
+              <ArrowLeftRight size={12} />
+              {showRoomPicker ? 'Cancelar' : 'Cambiar'}
+            </button>
+          )}
+        </div>
         <ul className="space-y-1 mb-6">
-          {Object.entries(roomsMap).map(([id, name]) => {
+          {visibleRooms.map(([id, name]) => {
             const isActive = activeView.type === 'room' && roomId === id;
             return (
               <li key={id}>
@@ -308,6 +344,8 @@ export default function ChatPage() {
           <LogOut size={18} />
         </button>
       </div>
+
+      <LegalFooter compact className="bg-app" />
     </>
   );
 
@@ -374,7 +412,7 @@ export default function ChatPage() {
       <UserList
         users={onlineUsers}
         currentUsername={username}
-        isAdmin={session.role === 'admin'}
+        isAdmin={isAdmin}
         onOpenDM={openDM}
         onAdminAction={adminAction}
         open={showUsers}

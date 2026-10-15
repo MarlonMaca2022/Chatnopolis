@@ -118,6 +118,15 @@ ln -s /etc/nginx/sites-available/chatnopolis /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 
+> **Los logs de nginx guardan IPs, y la política de privacidad lo declara.** La app no
+> registra direcciones IP en la base (solo las usa en memoria para los límites de
+> frecuencia), pero `access.log` sí las escribe, como cualquier servidor web. El texto de
+> `/privacidad` dice exactamente eso, así que **la afirmación es cierta solo si la
+> retención de esos logs es acotada**. Debian y Ubuntu ya rotan `/var/log/nginx` a 14 días
+> vía `logrotate`; si lo cambiás a algo mucho más largo, o si activás un log adicional,
+> corresponde actualizar el texto en `client/src/lib/legal.js`. Si preferís no guardarlas,
+> `access_log off;` en el bloque `server` alcanza — perdés diagnóstico a cambio.
+
 ## 6. HTTPS con Let's Encrypt
 
 ```bash

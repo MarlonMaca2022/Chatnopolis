@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { canonicalNick } = require('./nicks');
+const { TERMS_VERSION } = require('./legal');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -24,6 +25,8 @@ db.exec(`
     is_banned INTEGER NOT NULL DEFAULT 0,
     banned_until TEXT,        -- NULL con is_banned=1 => ban permanente
     is_muted INTEGER NOT NULL DEFAULT 0,
+    accepted_terms_at TEXT,   -- cuándo aceptó; NULL => nunca aceptó (cuenta vieja)
+    terms_version TEXT,       -- qué versión aceptó; distinta de TERMS_VERSION => re-aceptar
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -64,6 +67,10 @@ if (!hasColumn('guest_bans', 'expires_at')) db.exec('ALTER TABLE guest_bans ADD 
 if (!hasColumn('messages', 'image_expired')) {
   db.exec('ALTER TABLE messages ADD COLUMN image_expired INTEGER NOT NULL DEFAULT 0');
 }
+// Se agregan vacías a propósito: una cuenta que ya existía nunca aceptó estos
+// términos, y NULL es exactamente eso. Al entrar se le piden (ver routes.js).
+if (!hasColumn('users', 'accepted_terms_at')) db.exec('ALTER TABLE users ADD COLUMN accepted_terms_at TEXT');
+if (!hasColumn('users', 'terms_version')) db.exec('ALTER TABLE users ADD COLUMN terms_version TEXT');
 
 // Columnas canónicas: se agregan vacías y se rellenan desde el nombre ya guardado.
 function backfillCanon(table, key) {
@@ -96,9 +103,12 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_guest_bans_canon ON guest_bans(username_
 const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
 if (userCount === 0) {
   const hash = bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'admin123', 10);
+  // El admin del seed nace con los términos aceptados: es quien monta el sitio, y
+  // así un problema en el flujo de re-aceptación no lo deja afuera de su panel.
   db.prepare(
-    "INSERT INTO users (username, username_canon, password_hash, role) VALUES ('admin', 'admin', ?, 'admin')"
-  ).run(hash);
+    `INSERT INTO users (username, username_canon, password_hash, role, accepted_terms_at, terms_version)
+     VALUES ('admin', 'admin', ?, 'admin', datetime('now'), ?)`
+  ).run(hash, TERMS_VERSION);
   console.log('Usuario admin creado (cambia la contraseña en producción con ADMIN_PASSWORD)');
 }
 
@@ -124,10 +134,18 @@ const users = {
   // nombre de otro. Devuelve la fila con el `username` original para mostrarlo.
   findByNick: (nick) =>
     db.prepare('SELECT * FROM users WHERE username_canon = ?').get(canonicalNick(nick)),
-  create: ({ username, passwordHash, name, email, country }) =>
+  create: ({ username, passwordHash, name, email, country, termsVersion }) =>
     db.prepare(
-      'INSERT INTO users (username, username_canon, password_hash, name, email, country) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(username, canonicalNick(username), passwordHash, name, email, country),
+      `INSERT INTO users (username, username_canon, password_hash, name, email, country, accepted_terms_at, terms_version)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)`
+    ).run(username, canonicalNick(username), passwordHash, name, email, country, termsVersion),
+
+  // Por canónica, como todo lo que busca por nombre: "María" y "maria" son la
+  // misma cuenta y la aceptación tiene que caer en la fila correcta.
+  acceptTerms: (username, version) =>
+    db.prepare(
+      "UPDATE users SET accepted_terms_at = datetime('now'), terms_version = ? WHERE username_canon = ?"
+    ).run(version, canonicalNick(username)),
   all: () =>
     db.prepare('SELECT username, role, is_banned, banned_until, is_muted FROM users').all(),
   setBanned: (username, banned, until = null) =>
