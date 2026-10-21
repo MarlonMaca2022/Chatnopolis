@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Shield, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
+import TwoFactorSection from './TwoFactorSection.jsx';
 
 // "43 min" / "2 h 10 min" / "permanente" — until null significa sin vencimiento
 function formatUntil(until) {
@@ -228,6 +229,8 @@ export default function AdminModal({ onClose }) {
               </ul>
             )}
           </div>
+
+          <TwoFactorSection />
         </div>
       </div>
     </div>

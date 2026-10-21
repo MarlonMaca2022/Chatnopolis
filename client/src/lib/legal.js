@@ -207,7 +207,7 @@ export const LEGAL_PAGES = {
           },
           {
             title: 'Si tienes cuenta registrada',
-            text: 'Tu nombre de usuario, el nombre que indicaste, tu email, tu país si lo completaste, la fecha de alta, tu estado de moderación y la fecha en que aceptaste estos términos. La contraseña nunca se guarda: se almacena un hash bcrypt, del que no se puede recuperar la original.',
+            text: 'Tu nombre de usuario, el nombre que indicaste, tu email, tu país si lo completaste, la fecha de alta, tu estado de moderación y la fecha en que aceptaste estos términos. La contraseña nunca se guarda: se almacena un hash bcrypt, del que no se puede recuperar la original. Si la cuenta tiene activada la verificación en dos pasos, también guardamos la clave que comparte con la app de autenticación y un hash de cada código de recuperación sin usar; al desactivarla se borran.',
           },
           {
             title: 'Mensajes',
@@ -291,7 +291,7 @@ export const LEGAL_PAGES = {
         id: 'seguridad-datos',
         heading: 'Cómo protegemos la información',
         paragraphs: [
-          'Las contraseñas se guardan con hash bcrypt, las sesiones usan tokens firmados, el sitio se sirve por conexión cifrada y hay límites de frecuencia para frenar los intentos automatizados de acceso.',
+          'Las contraseñas se guardan con hash bcrypt, las sesiones usan tokens firmados, el sitio se sirve por conexión cifrada, el acceso de administración puede protegerse con verificación en dos pasos y hay límites de frecuencia para frenar los intentos automatizados de acceso.',
           'Ningún sistema es infalible. Si detectamos un incidente que afecte tus datos, te lo comunicaremos.',
         ],
       },

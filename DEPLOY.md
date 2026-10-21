@@ -173,6 +173,26 @@ npm run build
 pm2 restart chatnopolis
 ```
 
+## 10. Verificación en dos pasos del admin
+
+Se activa desde la app: **Panel de Administración → Verificación en dos pasos → Activar**,
+escaneando el QR con Google Authenticator, Authy o similar. Al confirmar se muestran **10
+códigos de recuperación una sola vez**: guardalos fuera del celular (gestor de contraseñas,
+papel). Cada uno reemplaza al código de la app en un login.
+
+**Si se perdió el celular y también los códigos**, se apaga desde el servidor (como el
+usuario de la app; es seguro con la app corriendo, igual que `.backup`):
+
+```bash
+sqlite3 ~/Chatnopolis/data/chat.db \
+  "UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_last_step = -1, totp_recovery = NULL
+   WHERE username_canon = 'admin';"
+```
+
+Después entrá con la contraseña sola y volvé a activarla con el celular nuevo. Quien puede
+correr eso ya tiene acceso al servidor, así que no abre ninguna puerta nueva: por eso importa
+que el SSH entre **solo con llave**.
+
 ## ¿Por qué SQLite y no Postgres/MongoDB?
 
 - **Cero administración**: no hay servicio extra que configurar, asegurar ni actualizar en el VPS.
