@@ -115,14 +115,21 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_guest_bans_canon ON guest_bans(username_
 // --- Seed inicial ---
 const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
 if (userCount === 0) {
+  // "admin" es el primer nombre que prueba un bot y avisa a todos qué cuenta atacar:
+  // en producción conviene uno propio con ADMIN_USERNAME. Mismo formato que el registro.
+  let adminName = (process.env.ADMIN_USERNAME || 'admin').trim();
+  if (!/^[a-zA-Z0-9_-]{3,20}$/.test(adminName)) {
+    console.warn(`Aviso: ADMIN_USERNAME "${adminName}" no es válido (3-20 letras, números, _ o -). Se usa "admin".`);
+    adminName = 'admin';
+  }
   const hash = bcrypt.hashSync(process.env.ADMIN_PASSWORD || 'admin123', 10);
   // El admin del seed nace con los términos aceptados: es quien monta el sitio, y
   // así un problema en el flujo de re-aceptación no lo deja afuera de su panel.
   db.prepare(
     `INSERT INTO users (username, username_canon, password_hash, role, accepted_terms_at, terms_version)
-     VALUES ('admin', 'admin', ?, 'admin', datetime('now'), ?)`
-  ).run(hash, TERMS_VERSION);
-  console.log('Usuario admin creado (cambia la contraseña en producción con ADMIN_PASSWORD)');
+     VALUES (?, ?, ?, 'admin', datetime('now'), ?)`
+  ).run(adminName, canonicalNick(adminName), hash, TERMS_VERSION);
+  console.log(`Usuario admin "${adminName}" creado (en producción definí ADMIN_PASSWORD y ADMIN_USERNAME)`);
 }
 
 const roomCount = db.prepare('SELECT COUNT(*) AS n FROM rooms').get().n;

@@ -19,4 +19,18 @@ function canonicalNick(nick) {
     .toLowerCase();
 }
 
-module.exports = { canonicalNick };
+// Nombres que nadie puede tomar como invitado ni registrar: suenan a staff y
+// servirían para hacerse pasar por moderación. Se compara la canónica y por
+// "contiene", así "El Admin", "ADMÍN_oficial" o "soporte-chatnopolis" también
+// quedan afuera. Las palabras cortas que aparecen dentro de nombres comunes
+// ("mod" en "modesto") van aparte y solo cuentan si son el nombre entero.
+// No afecta a cuentas que ya existen: el admin real se llama como quiera.
+const RESERVED_WORDS = ['admin', 'moderador', 'soporte', 'staff', 'chatnopolis', 'sistema'];
+const RESERVED_EXACT = ['mod', 'root'];
+
+function isReservedNick(nick) {
+  const canon = canonicalNick(nick);
+  return RESERVED_EXACT.includes(canon) || RESERVED_WORDS.some((word) => canon.includes(word));
+}
+
+module.exports = { canonicalNick, isReservedNick };

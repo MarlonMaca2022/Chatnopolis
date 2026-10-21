@@ -21,7 +21,7 @@ npm run dev:client   # Vite dev server → http://localhost:5173 (proxy al backe
 
 - Desarrollo: abrir **http://localhost:5173** (Vite hace proxy de `/api` y `/socket.io` al :3000).
 - Producción: `npm run build` compila React a `client/dist`, y `npm start` sirve todo desde Express en el `:3000`.
-- Admin inicial: `admin` / `admin123` — se crea solo en el primer arranque si no hay usuarios. Cambiar en prod con la env `ADMIN_PASSWORD`.
+- Admin inicial: `admin` / `admin123` — se crea solo en el primer arranque si no hay usuarios. En prod se cambian con las envs `ADMIN_PASSWORD` y `ADMIN_USERNAME` (renombrar uno existente: DEPLOY.md §11).
 
 ## Estructura
 
@@ -71,6 +71,7 @@ Las migraciones sobre bases ya creadas van con `ALTER TABLE` guardado por el hel
 Un invitado no tiene cuenta: **su identidad es el nombre**. De ahí salen tres reglas que hay que respetar en cualquier código que compare usuarios.
 
 - **Todo se compara por forma canónica** (`server/nicks.js`, `canonicalNick()`): sin tildes, sin espacios y en minúsculas. `María`, `MARIA` y `M aria` son **la misma identidad** que `maria`. Nunca compares nombres con `===` ni con `WHERE username = ?` — SQLite compara texto byte a byte, y sin esto un invitado entra como `Admin` (no colisiona con `admin`) o un baneado vuelve agregándole una tilde a su nick. La canónica se guarda materializada en `users.username_canon` (índice `UNIQUE`) y `guest_bans.username_canon`; el `username` original queda solo para mostrarlo. Por eso las búsquedas por nombre van todas por **`users.findByNick()`**.
+- **Nicks reservados** (`isReservedNick()`, `server/nicks.js`): nada que contenga `admin`, `moderador`, `soporte`, `staff`, `chatnopolis` o `sistema` (más `mod` y `root` exactos), como invitado ni al registrarse. Va por canónica y por "contiene" para que `El Admín` tampoco pase. No toca cuentas existentes — el admin real puede llamarse como quiera, y no conviene que se llame `admin`.
 - **Un nick de invitado a la vez.** `guestNicks` (`server/socket.js`) reserva la canónica en el **handshake**, no en el `join`: entre uno y otro pasa tiempo y ahí entrarían las dos conexiones. Se libera en `disconnect` solo si la reserva sigue siendo de ese socket, y si el dueño ya no está en `io.sockets.sockets` el nombre se cede — una reserva colgada no bloquea el nick para siempre. El rechazo viaja como error de handshake, y el cliente ya lo muestra sin cambios (`ChatPage.jsx` → `sessionStorage.disconnect_reason` → `AuthPage`).
 - **Una cuenta registrada sí puede tener varias sesiones** (celular + compu). Por eso `socketIdsFor()` devuelve **todos** los sockets de una identidad y los DM, `disconnectUser()` y `syncMuted()` se aplican a todos. Nunca vuelvas a un helper que devuelva "el primer socket que encuentre": era la causa de que un DM o un baneo cayeran en la persona equivocada.
 
