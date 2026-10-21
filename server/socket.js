@@ -1,7 +1,7 @@
 const { users, rooms, messages, guestBans } = require('./db');
 const { verifyToken } = require('./auth');
 const { pruneRoom } = require('./cleanup');
-const { canonicalNick } = require('./nicks');
+const { canonicalNick, isReservedNick } = require('./nicks');
 const { TERMS_VERSION, CONSENT_REQUIRED, TERMS_OUTDATED } = require('./legal');
 const {
   clientIp,
@@ -72,6 +72,7 @@ function setupSocket(io) {
     if (!/^[a-zA-Z0-9_\-áéíóúñÁÉÍÓÚÑ ]{3,20}$/.test(nick)) {
       return next(new Error('Nick inválido (3-20 caracteres)'));
     }
+    if (isReservedNick(nick)) return next(new Error('Ese nombre está reservado. Elige otro.'));
     const canon = canonicalNick(nick);
     const guestBan = guestBans.status(nick);
     if (guestBan.banned) return next(new Error(banMessage(guestBan.until, 'Este nombre está baneado')));

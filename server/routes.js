@@ -14,6 +14,7 @@ const {
   noteSecondFactorFailure,
 } = require('./ratelimit');
 const totp = require('./totp');
+const { isReservedNick } = require('./nicks');
 const { TERMS_VERSION, CONSENT_REQUIRED } = require('./legal');
 
 const router = express.Router();
@@ -138,6 +139,9 @@ router.post('/register', registerLimiter, (req, res) => {
       success: false,
       message: 'El usuario debe tener 3-20 caracteres (letras, números, _ o -)',
     });
+  }
+  if (isReservedNick(username)) {
+    return res.status(400).json({ success: false, message: 'Ese nombre está reservado. Elige otro.' });
   }
   if (password.length < 6) {
     return res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 6 caracteres' });

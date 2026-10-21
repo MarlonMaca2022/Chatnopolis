@@ -38,6 +38,7 @@ Crea `/home/chatnopolis/Chatnopolis/.env`:
 PORT=3000
 JWT_SECRET=                                        # OBLIGATORIA. Generala con: openssl rand -hex 32
 ADMIN_PASSWORD=una-contraseña-fuerte-para-admin    # solo se usa al crear la DB por primera vez
+ADMIN_USERNAME=un-nombre-propio                    # idem; sin ella el admin se llama "admin"
 TRUST_PROXY=1                                      # PONELA si hay nginx delante (este manual lo pone)
 
 # Opcionales (estos son los valores por defecto)
@@ -74,9 +75,14 @@ PHOTO_DISK_LIMIT_MB=500    # techo de la carpeta uploads/. Al llegar, se rechaza
 > valores de ejemplo copiados tal cual y avisa si tiene menos de 32 caracteres.
 > Cambiarla más adelante es seguro: solo obliga a todos a volver a iniciar sesión.
 
-> **Importante:** `ADMIN_PASSWORD` solo aplica la primera vez que se crea `data/chat.db`.
-> Si ya arrancaste el servidor sin ella, borra `data/chat.db` y reinicia (perderás datos)
-> o cambia el hash manualmente.
+> **Importante:** `ADMIN_PASSWORD` y `ADMIN_USERNAME` solo aplican la primera vez que se crea
+> `data/chat.db`. Si ya arrancaste el servidor sin la contraseña, borra `data/chat.db` y
+> reinicia (perderás datos) o cambia el hash manualmente. Para el nombre, ver la sección 11.
+>
+> **Conviene no dejarlo en `admin`:** es el primer nombre que prueba un bot, y en el chat le
+> dice a todos qué cuenta atacar. `admin`, `moderador`, `soporte`, `staff` y parecidos quedan
+> reservados (nadie los puede tomar como invitado ni registrar), así que nadie se hace pasar
+> por la moderación con ellos.
 
 ## 4. Mantener la app corriendo con pm2
 
@@ -186,12 +192,37 @@ usuario de la app; es seguro con la app corriendo, igual que `.backup`):
 ```bash
 sqlite3 ~/Chatnopolis/data/chat.db \
   "UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_last_step = -1, totp_recovery = NULL
-   WHERE username_canon = 'admin';"
+   WHERE role = 'admin';"
 ```
+
+Va por rol y no por nombre para no tener que escribir acá cómo se llama el admin. Si hay más
+de un admin, se los apaga a todos: cada uno la vuelve a activar.
 
 Después entrá con la contraseña sola y volvé a activarla con el celular nuevo. Quien puede
 correr eso ya tiene acceso al servidor, así que no abre ninguna puerta nueva: por eso importa
 que el SSH entre **solo con llave**.
+
+## 11. Renombrar una cuenta (por ejemplo, el admin)
+
+El nombre aparece en la cuenta, en sus mensajes y en las salas que creó: hay que cambiarlo en
+los tres lados a la vez. Hacé un backup antes (`~/bin/backup.sh` o el comando del paso 8) y
+reemplazá `viejo` / `Nuevo` (la canónica es el nombre sin tildes ni espacios y en minúsculas):
+
+```bash
+sqlite3 ~/Chatnopolis/data/chat.db <<'SQL'
+BEGIN;
+UPDATE users    SET username = 'Nuevo', username_canon = 'nuevo' WHERE username = 'viejo';
+UPDATE messages SET sender    = 'Nuevo' WHERE sender    = 'viejo';
+UPDATE messages SET recipient = 'Nuevo' WHERE recipient = 'viejo';
+UPDATE rooms    SET created_by = 'Nuevo' WHERE created_by = 'viejo';
+COMMIT;
+SQL
+pm2 restart chatnopolis
+```
+
+El `restart` corta las sesiones abiertas con el nombre viejo: el token ya no encuentra la
+cuenta y pide volver a entrar. El 2FA sigue funcionando; la app del celular muestra la
+etiqueta vieja, que se puede editar ahí mismo.
 
 ## ¿Por qué SQLite y no Postgres/MongoDB?
 
