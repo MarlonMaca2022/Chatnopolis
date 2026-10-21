@@ -18,9 +18,14 @@ async function request(path, options = {}) {
 export const api = {
   getRooms: () => request('/rooms'),
   // acceptedTerms solo hace falta cuando el servidor pidió re-aceptar los términos
-  // (respuesta con termsOutdated). En un login normal viaja como undefined.
-  login: (username, password, acceptedTerms) =>
-    request('/login', { method: 'POST', body: { username, password, acceptedTerms } }),
+  // (respuesta con termsOutdated), y code cuando pidió el segundo factor (needsCode).
+  // En un login normal los dos viajan como undefined.
+  login: (username, password, acceptedTerms, code) =>
+    request('/login', { method: 'POST', body: { username, password, acceptedTerms, code } }),
+  get2fa: () => request('/2fa'),
+  setup2fa: () => request('/2fa/setup', { method: 'POST' }),
+  enable2fa: (password, code) => request('/2fa/enable', { method: 'POST', body: { password, code } }),
+  disable2fa: (password, code) => request('/2fa/disable', { method: 'POST', body: { password, code } }),
   register: (payload) => request('/register', { method: 'POST', body: payload }),
   createRoom: (name) => request('/rooms', { method: 'POST', body: { name } }),
   deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),

@@ -57,6 +57,9 @@ export default function AuthPage() {
   // El servidor pidió re-aceptar los términos en este login (cuenta vieja o versión
   // nueva). Devolvió 200 pero SIN token, así que no hay sesión hasta que se acepte.
   const [termsOutdated, setTermsOutdated] = useState(false);
+  // La cuenta tiene verificación en dos pasos: mismo patrón, 200 sin token hasta
+  // que se manda el código. Usuario y contraseña siguen en el formulario.
+  const [needsCode, setNeedsCode] = useState(false);
 
   useEffect(() => {
     api.getRooms().then(setRooms).catch(() => {});
@@ -74,6 +77,7 @@ export default function AuthPage() {
     setNotice('');
     setAccepted(false);
     setTermsOutdated(false);
+    setNeedsCode(false);
   }
 
   const consentMissing = `Tienes que confirmar que eres mayor de ${LEGAL.edadMinima} y aceptar los términos.`;
@@ -97,12 +101,19 @@ export default function AuthPage() {
       const data = await api.login(
         e.target.username.value.trim(),
         e.target.password.value,
-        termsOutdated ? accepted : undefined
+        termsOutdated ? accepted : undefined,
+        needsCode ? e.target.code.value.trim() : undefined
       );
       // Sin token: las credenciales estaban bien, pero faltan los términos.
       if (data.termsOutdated) {
         setTermsOutdated(true);
         setNotice('Actualizamos los términos. Léelos y confirma para continuar.');
+        return;
+      }
+      // Sin token: falta el código de la app de autenticación.
+      if (data.needsCode) {
+        setNeedsCode(true);
+        setNotice('Escribe el código de 6 dígitos de tu app de autenticación.');
         return;
       }
       setSession({ token: data.token, username: data.username, role: data.role, roomId });
@@ -213,6 +224,22 @@ export default function AuthPage() {
             </div>
             {/* Solo aparece si el servidor pidió re-aceptar: al usuario habitual no lo molesta. */}
             {termsOutdated && <ConsentCheck checked={accepted} onChange={setAccepted} />}
+            {needsCode && (
+              <div>
+                <label className="block text-sm font-medium text-ink-soft mb-1">Código de verificación</label>
+                <input
+                  name="code"
+                  required
+                  autoFocus
+                  autoComplete="one-time-code"
+                  placeholder="123456"
+                  className={`${inputClass} tracking-widest`}
+                />
+                <p className="mt-1 text-xs text-ink-faint">
+                  El de tu app de autenticación, o uno de tus códigos de recuperación.
+                </p>
+              </div>
+            )}
             <button
               type="submit"
               disabled={busy}

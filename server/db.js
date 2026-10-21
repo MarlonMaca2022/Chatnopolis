@@ -71,6 +71,19 @@ if (!hasColumn('messages', 'image_expired')) {
 // términos, y NULL es exactamente eso. Al entrar se le piden (ver routes.js).
 if (!hasColumn('users', 'accepted_terms_at')) db.exec('ALTER TABLE users ADD COLUMN accepted_terms_at TEXT');
 if (!hasColumn('users', 'terms_version')) db.exec('ALTER TABLE users ADD COLUMN terms_version TEXT');
+// Verificación en dos pasos (server/totp.js). totp_secret NULL => desactivada.
+// totp_pending es el secreto recién generado mientras se escanea el QR: no protege
+// nada hasta que se confirma con un código, así un QR abandonado no deja la cuenta
+// a medio configurar. totp_recovery es un JSON con los hashes de los códigos que
+// quedan sin usar.
+if (!hasColumn('users', 'totp_secret')) {
+  db.exec(`
+    ALTER TABLE users ADD COLUMN totp_secret TEXT;
+    ALTER TABLE users ADD COLUMN totp_pending TEXT;
+    ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT -1;
+    ALTER TABLE users ADD COLUMN totp_recovery TEXT;
+  `);
+}
 
 // Columnas canónicas: se agregan vacías y se rellenan desde el nombre ya guardado.
 function backfillCanon(table, key) {
@@ -155,6 +168,32 @@ const users = {
     db.prepare('UPDATE users SET is_muted = ? WHERE username = ?').run(muted ? 1 : 0, username),
   toggleMuted: (username) =>
     db.prepare('UPDATE users SET is_muted = 1 - is_muted WHERE username = ?').run(username),
+
+  // --- Verificación en dos pasos ---
+  setTotpPending: (username, secret) =>
+    db.prepare('UPDATE users SET totp_pending = ? WHERE username = ?').run(secret, username),
+  enableTotp: (username, secret, step, recoveryHashes) =>
+    db.prepare(
+      `UPDATE users SET totp_secret = ?, totp_pending = NULL, totp_last_step = ?, totp_recovery = ?
+       WHERE username = ?`
+    ).run(secret, step, JSON.stringify(recoveryHashes), username),
+  disableTotp: (username) =>
+    db.prepare(
+      `UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_last_step = -1, totp_recovery = NULL
+       WHERE username = ?`
+    ).run(username),
+  // El paso del último código aceptado: el próximo tiene que ser posterior (ver totp.verify)
+  setTotpStep: (username, step) =>
+    db.prepare('UPDATE users SET totp_last_step = ? WHERE username = ?').run(step, username),
+  recoveryHashes: (user) => (user.totp_recovery ? JSON.parse(user.totp_recovery) : []),
+  // Consume un código de recuperación: true si estaba sin usar y ya no sirve más.
+  useRecoveryCode: (user, hash) => {
+    const left = users.recoveryHashes(user);
+    if (!left.includes(hash)) return false;
+    db.prepare('UPDATE users SET totp_recovery = ? WHERE username = ?')
+      .run(JSON.stringify(left.filter((h) => h !== hash)), user.username);
+    return true;
+  },
 
   // { banned, until } — until null en bans permanentes. Vence solo.
   banStatus: (username) => {

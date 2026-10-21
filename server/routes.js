@@ -2,11 +2,18 @@ const express = require('express');
 const crypto = require('crypto');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
+const QRCode = require('qrcode');
 const { users, rooms, guestBans } = require('./db');
 const { signToken, verifyToken } = require('./auth');
 const { syncMuted, sessionForSocket } = require('./socket');
 const { UPLOADS_DIR, uploadUrl, checkQuota, noteUploaded } = require('./uploads');
-const { loginLimiter, registerLimiter } = require('./ratelimit');
+const {
+  loginLimiter,
+  registerLimiter,
+  secondFactorBlocked,
+  noteSecondFactorFailure,
+} = require('./ratelimit');
+const totp = require('./totp');
 const { TERMS_VERSION, CONSENT_REQUIRED } = require('./legal');
 
 const router = express.Router();
@@ -36,9 +43,28 @@ function requireAdmin(req, res, next) {
   });
 }
 
+// Segundo factor de una cuenta que lo tiene activo: el código de la app o uno de
+// los de recuperación. Devuelve null si pasa, o { status, message } para responder.
+function checkSecondFactor(user, code) {
+  if (secondFactorBlocked(user.username_canon)) {
+    return {
+      status: 429,
+      message: 'Demasiados códigos incorrectos. Esperá 15 minutos y volvé a probar.',
+    };
+  }
+  const step = totp.verify(user.totp_secret, code, { afterStep: user.totp_last_step });
+  if (step !== null) {
+    users.setTotpStep(user.username, step);
+    return null;
+  }
+  if (users.useRecoveryCode(user, totp.hashRecoveryCode(code))) return null;
+  noteSecondFactorFailure(user.username_canon);
+  return { status: 401, message: 'Código incorrecto' };
+}
+
 // --- Auth ---
 router.post('/login', loginLimiter, (req, res) => {
-  const { username, password, acceptedTerms } = req.body || {};
+  const { username, password, acceptedTerms, code } = req.body || {};
   // findByNick: entrar como "Admin" o "ADMIN" es entrar como "admin"
   const user = username && users.findByNick(username);
 
@@ -63,12 +89,22 @@ router.post('/login', loginLimiter, (req, res) => {
   // La clave es que en ese caso NO se firma token — sin token no hay sesión, así que
   // el paso no se saltea desde el cliente. Es un 200, no un error, así que tampoco
   // le come intentos del loginLimiter (que tiene skipSuccessfulRequests).
-  if (user.terms_version !== TERMS_VERSION) {
-    if (acceptedTerms !== true) {
-      return res.json({ success: true, termsOutdated: true, message: CONSENT_REQUIRED });
-    }
-    users.acceptTerms(user.username, TERMS_VERSION);
+  const termsOutdated = user.terms_version !== TERMS_VERSION;
+  if (termsOutdated && acceptedTerms !== true) {
+    return res.json({ success: true, termsOutdated: true, message: CONSENT_REQUIRED });
   }
+
+  // Verificación en dos pasos: mismo patrón, 200 sin token hasta que llegue el código.
+  // Va DESPUÉS de los términos y ANTES de cualquier escritura: la aceptación recién se
+  // guarda con el código verificado, así que la contraseña sola no cambia nada de la
+  // cuenta. Y el código se consume una sola vez, en el pedido que firma el token.
+  if (user.totp_secret) {
+    if (!code) return res.json({ success: true, needsCode: true });
+    const failure = checkSecondFactor(user, code);
+    if (failure) return res.status(failure.status).json({ success: false, message: failure.message });
+  }
+
+  if (termsOutdated) users.acceptTerms(user.username, TERMS_VERSION);
 
   res.json({
     success: true,
@@ -121,6 +157,89 @@ router.post('/register', registerLimiter, (req, res) => {
   });
 
   res.json({ success: true, username, role: 'user' });
+});
+
+// --- Verificación en dos pasos ---
+// Sirve para cualquier cuenta registrada, aunque hoy la pantalla para activarla
+// solo está en el panel de admin. Se lee la fila fresca en cada pedido: el token
+// dice quién es, pero no si ya activó o desactivó el segundo factor.
+function currentUser(req, res) {
+  const user = users.findByNick(req.user.username);
+  if (!user) res.status(401).json({ success: false, message: 'No autorizado' });
+  return user;
+}
+
+router.get('/2fa', requireAuth, (req, res) => {
+  const user = currentUser(req, res);
+  if (!user) return;
+  res.json({ enabled: !!user.totp_secret, recoveryLeft: users.recoveryHashes(user).length });
+});
+
+// Paso 1: secreto nuevo + QR. Queda pendiente hasta que se confirme con un código,
+// y pedir otro reemplaza al anterior (escanear dos veces no deja dos válidos).
+router.post('/2fa/setup', requireAuth, async (req, res) => {
+  const user = currentUser(req, res);
+  if (!user) return;
+  if (user.totp_secret) {
+    return res.status(400).json({ success: false, message: 'La verificación en dos pasos ya está activa' });
+  }
+  const secret = totp.generateSecret();
+  users.setTotpPending(user.username, secret);
+  // El QR se genera acá y no con un servicio externo de QR: el secreto no sale del servidor.
+  // try/catch porque Express 4 no atrapa los errores de un handler async.
+  try {
+    const qr = await QRCode.toDataURL(totp.otpauthUrl(secret, user.username), { margin: 1, width: 220 });
+    res.json({ success: true, secret, qr });
+  } catch {
+    res.status(500).json({ success: false, message: 'No se pudo generar el código QR' });
+  }
+});
+
+// Paso 2: un código de la app prueba que se escaneó bien. Recién ahí se activa y se
+// generan los códigos de recuperación, que viajan esta única vez en claro.
+// Pide la contraseña: si no, con un token robado alguien activaría el segundo
+// factor con SU celular y dejaría al dueño afuera de su propia cuenta.
+router.post('/2fa/enable', loginLimiter, requireAuth, (req, res) => {
+  const user = currentUser(req, res);
+  if (!user) return;
+  if (user.totp_secret) {
+    return res.status(400).json({ success: false, message: 'La verificación en dos pasos ya está activa' });
+  }
+  if (!user.totp_pending) {
+    return res.status(400).json({ success: false, message: 'Primero generá el código QR' });
+  }
+  const { password, code } = req.body || {};
+  if (!bcrypt.compareSync(password || '', user.password_hash)) {
+    return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
+  }
+  const step = totp.verify(user.totp_pending, code);
+  if (step === null) {
+    return res.status(400).json({
+      success: false,
+      message: 'Código incorrecto. Revisá que la hora del celular esté en automático.',
+    });
+  }
+  const recoveryCodes = totp.generateRecoveryCodes();
+  users.enableTotp(user.username, user.totp_pending, step, recoveryCodes.map(totp.hashRecoveryCode));
+  res.json({ success: true, recoveryCodes });
+});
+
+// Desactivar pide contraseña Y código: con un token robado solo no alcanza para
+// sacarle la protección a la cuenta. loginLimiter porque cuesta un bcrypt.
+router.post('/2fa/disable', loginLimiter, requireAuth, (req, res) => {
+  const user = currentUser(req, res);
+  if (!user) return;
+  if (!user.totp_secret) {
+    return res.status(400).json({ success: false, message: 'La verificación en dos pasos no está activa' });
+  }
+  const { password, code } = req.body || {};
+  if (!bcrypt.compareSync(password || '', user.password_hash)) {
+    return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
+  }
+  const failure = checkSecondFactor(user, code);
+  if (failure) return res.status(failure.status).json({ success: false, message: failure.message });
+  users.disableTotp(user.username);
+  res.json({ success: true });
 });
 
 // --- Rooms ---

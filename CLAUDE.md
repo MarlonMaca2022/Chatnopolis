@@ -34,13 +34,14 @@ server/
   nicks.js     canonicalNick() — forma canónica de un nombre; TODA comparación de identidad pasa por acá
   routes.js    API REST: login, register, rooms, users, upload de fotos + middleware requireAuth/requireAdmin
   ratelimit.js Límites por frecuencia: REST (login/register/api) y chat en vivo (mensajes, consultas, conexiones)
+  totp.js      Verificación en dos pasos: TOTP (RFC 6238) sobre node:crypto + códigos de recuperación
   socket.js    Chat en tiempo real; el rol se re-verifica server-side (no se confía en el cliente)
   uploads.js   UPLOADS_DIR + removeUploadFile() (único módulo que borra fotos) + cuotas y techo de disco
   cleanup.js   Poda de historial y barrido de fotos vencidas/huérfanas (startCleanupJobs)
 client/
   src/pages/         AuthPage (invitado/login/registro), ChatPage, LegalPage (renderiza las 3 legales)
   src/components/     MessageList, MessageInput (fotos solo en DM), UserList, AdminModal,
-                     AgeGate (aviso 18+), LegalFooter
+                     TwoFactorSection (2FA, dentro del AdminModal), AgeGate (aviso 18+), LegalFooter
   src/lib/           api.js (fetch wrapper + uploadPhoto), session.js (token en localStorage),
                      compressImage.js (redimensiona/reencoda antes de subir),
                      legal.js (texto de términos/privacidad/seguridad + responsable legal)
@@ -120,6 +121,20 @@ Todo lo que frena el abuso **por frecuencia** vive en un solo módulo. Las cuota
 - **`TRUST_PROXY`** decide de dónde sale la IP. Está **apagado por defecto a propósito**: si confiáramos siempre en `X-Forwarded-For`, un servidor sin proxy delante creería la cabecera que le mande cualquiera y todos los límites por IP se saltarían con una IP inventada por intento. En el VPS hay que poner `TRUST_PROXY=1` (ver DEPLOY.md) o los límites contarían todo el tráfico como una sola IP. El arranque imprime cuál de los dos modos está activo. Se lee el **último** valor de `X-Forwarded-For` porque nginx usa `$proxy_add_x_forwarded_for`, que agrega la IP real al final; lo anterior lo puede haber escrito el cliente.
 
 **El destinatario de un privado no es texto libre** (`server/socket.js`): tiene que ser una cuenta registrada o un invitado conectado ahora mismo, y como mucho `MAX_NICK_LENGTH` (20) caracteres. Antes un nombre inventado se guardaba igual, así que cada emit escribía una fila que nadie iba a leer nunca, con un `to` tan largo como el cliente quisiera (el tope de Socket.IO es 1 MB) y sin nada que la podara después.
+
+## Verificación en dos pasos (`server/totp.js`) — IMPORTANTE
+
+Código de 6 dígitos de una app (Google Authenticator, Authy…) además de la contraseña. El servidor la soporta para **cualquier cuenta registrada**; la pantalla para activarla (`TwoFactorSection`) hoy vive solo en el `AdminModal`, porque es la cuenta que la necesita.
+
+- **TOTP propio, sin dependencia**: ~30 líneas sobre `node:crypto`, probado contra los vectores del RFC 6238. Acepta ±1 paso de 30 s por el desfase de reloj del celular. El QR lo genera el servidor con `qrcode` (data URL): **nunca un servicio externo de QR**, que vería el secreto.
+- **Login: mismo patrón que `termsOutdated`.** Con la contraseña bien, `POST /api/login` devuelve **200 con `needsCode: true` y sin token**; `AuthPage` muestra el campo y reenvía con `code`. Orden: contraseña → ban → términos (sin escribir) → código → recién ahí se guarda la aceptación de términos y se firma el token. Así **la contraseña sola no escribe nada** en la cuenta, y el código se consume en el único pedido que firma.
+- **Un código no sirve dos veces**: `users.totp_last_step` guarda el paso del último aceptado y `verify()` solo acepta posteriores. Sin esto, quien lo ve por encima del hombro lo reusa en los 30 s que le quedan.
+- **Tope por cuenta** (`secondFactorBlocked`, 5 fallos / 15 min, en `ratelimit.js`): `loginLimiter` cuenta por IP, y quien llega a este paso ya tiene la contraseña — repartiendo intentos entre IPs podría barrer los códigos. Va por canónica, como todo.
+- **Activar pide contraseña + código, y desactivar también.** Con un token robado solo, nadie le saca la protección a la cuenta ni la activa con *su* celular para dejar afuera al dueño. El secreto queda en `totp_pending` hasta que se confirma: un QR abandonado no protege nada ni deja la cuenta a medias.
+- **Códigos de recuperación**: 10, de un solo uso, se muestran **una única vez** al activar. Se guardan con SHA-256 (no bcrypt: tienen 40 bits al azar, y bcrypt bloquearía el hilo una vez por código). Sirven en el login y para desactivar.
+- **Sesiones ya abiertas no se cierran** al activarla: el JWT dura 7 días y no hay forma de revocarlo (ver "Endurecimiento pendiente" en DEPLOY.md).
+- Si el admin pierde el celular **y** los códigos, se apaga desde el servidor (DEPLOY.md, *Verificación en dos pasos*).
+- La política de privacidad menciona la clave y los hashes que se guardan: si cambia lo que se persiste, se actualiza el texto.
 
 ## Tema y color (`client/src/index.css`)
 

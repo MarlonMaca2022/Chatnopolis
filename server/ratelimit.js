@@ -137,17 +137,43 @@ function allowConnection(ip) {
   return true;
 }
 
+// --- Segundo factor, por cuenta ---
+// loginLimiter cuenta por IP, y eso no alcanza acá: quien llega a este paso ya
+// tiene la contraseña, y con muchas IPs podría probar códigos de 6 dígitos hasta
+// acertar. Este tope es por cuenta, así que repartir los intentos no sirve. Que
+// alguien con la contraseña pueda bloquear el paso 15 min es el precio aceptable.
+const SECOND_FACTOR_LIMIT = 5;
+const SECOND_FACTOR_WINDOW_MS = 15 * 60_000;
+const secondFactorFailures = new Map(); // canon -> [timestamps]
+
+function secondFactorBlocked(canon) {
+  const hits = recent(secondFactorFailures.get(canon) || [], SECOND_FACTOR_WINDOW_MS, Date.now());
+  return hits.length >= SECOND_FACTOR_LIMIT;
+}
+
+function noteSecondFactorFailure(canon) {
+  const now = Date.now();
+  const hits = recent(secondFactorFailures.get(canon) || [], SECOND_FACTOR_WINDOW_MS, now);
+  secondFactorFailures.set(canon, [...hits, now]);
+}
+
 // Al desconectarse no hace falta seguir recordando su ritmo.
 const forgetSocket = (socketId) => buckets.delete(socketId);
 
 // IPs sin conexiones recientes: si no, el mapa crece con cada visita. Lo llama el
-// barrido de cleanup.js, igual que pruneQuotas() de uploads.js.
+// barrido de cleanup.js, igual que pruneQuotas() de uploads.js. De paso limpia los
+// fallos de segundo factor que ya salieron de la ventana.
 function pruneConnections() {
   const now = Date.now();
   for (const [ip, timestamps] of connections) {
     const left = recent(timestamps, CONNECTION_WINDOW_MS, now);
     if (left.length === 0) connections.delete(ip);
     else connections.set(ip, left);
+  }
+  for (const [canon, timestamps] of secondFactorFailures) {
+    const left = recent(timestamps, SECOND_FACTOR_WINDOW_MS, now);
+    if (left.length === 0) secondFactorFailures.delete(canon);
+    else secondFactorFailures.set(canon, left);
   }
 }
 
@@ -161,6 +187,8 @@ module.exports = {
   allowQuery,
   shouldWarn,
   allowConnection,
+  secondFactorBlocked,
+  noteSecondFactorFailure,
   forgetSocket,
   pruneConnections,
   MESSAGE_LIMIT,
