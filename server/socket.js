@@ -1,5 +1,5 @@
 const { users, rooms, messages, guestBans } = require('./db');
-const { verifyToken } = require('./auth');
+const { sessionAccount } = require('./auth');
 const { pruneRoom } = require('./cleanup');
 const { canonicalNick, isReservedNick } = require('./nicks');
 const { TERMS_VERSION, CONSENT_REQUIRED, TERMS_OUTDATED } = require('./legal');
@@ -43,10 +43,9 @@ function setupSocket(io) {
     const { token, username, terms } = socket.handshake.auth || {};
 
     if (token) {
-      const payload = verifyToken(token);
-      if (!payload) return next(new Error('Sesión inválida o expirada'));
-      const dbUser = users.findByNick(payload.username);
-      if (!dbUser) return next(new Error('Sesión inválida o expirada'));
+      const session = sessionAccount(token);
+      if (!session) return next(new Error('Sesión inválida o expirada'));
+      const { user: dbUser, payload } = session;
       const ban = users.banStatus(dbUser.username);
       if (ban.banned) return next(new Error(banMessage(ban.until, 'Tu cuenta está baneada')));
       // Un token firmado antes de que cambiaran los términos seguiría siendo válido:
@@ -59,6 +58,9 @@ function setupSocket(io) {
         canon: canonicalNick(dbUser.username),
         role: dbUser.role,
         isMuted: !!dbUser.is_muted,
+        // Para cortar la conexión cuando vence el token y para revalidar al admin
+        sessionVersion: payload.sv,
+        expiresAt: payload.exp * 1000,
       };
       return next();
     }
@@ -97,6 +99,17 @@ function setupSocket(io) {
   });
 
   io.on('connection', (socket) => {
+    // El token se mira una sola vez, en el handshake: sin esto, una conexión abierta
+    // seguiría viva días después de que venció. Al reconectar, el token vencido ya no
+    // pasa el handshake y el cliente vuelve al login.
+    const { expiresAt } = socket.user;
+    const expiryTimer =
+      expiresAt &&
+      setTimeout(() => {
+        socket.emit('forceDisconnect', 'Tu sesión venció. Inicia sesión de nuevo.');
+        socket.disconnect();
+      }, Math.max(0, expiresAt - Date.now()));
+
     socket.on('join', ({ room } = {}) => {
       if (!allowQuery(socket.id)) return;
       const roomId = rooms.find(room) ? room : 'general';
@@ -287,6 +300,7 @@ function setupSocket(io) {
 
     socket.on('disconnect', () => {
       forgetSocket(socket.id);
+      clearTimeout(expiryTimer);
 
       // Liberar la reserva del nick, pero solo si sigue siendo nuestra: si el
       // invitado ya se reconectó con otro socket, la reserva es de ese.
@@ -383,9 +397,38 @@ function syncMuted(io, username, isMuted) {
   });
 }
 
+// Se vuelve a mirar la base en cada acción: el rol del handshake puede haber cambiado
+// o las sesiones de la cuenta pueden haberse cerrado mientras este socket seguía
+// abierto. Son acciones esporádicas, así que la consulta no cuesta nada.
 function isAdmin(socket) {
   const user = usersOnline[socket.id];
-  return user && user.role === 'admin';
+  if (!user || user.role !== 'admin') return false;
+  const dbUser = users.findByNick(user.username);
+  return (
+    !!dbUser && dbUser.role === 'admin' && dbUser.session_version === socket.user.sessionVersion
+  );
+}
+
+// Cierra todas las sesiones de una cuenta registrada: sube la versión (los tokens
+// firmados hasta ahora dejan de valer) y desconecta los sockets abiertos, que si no
+// seguirían vivos con el token viejo. `keepSocketId` es la pestaña desde la que se
+// pidió el cambio, cuando el pedido le devuelve un token nuevo: esa sigue conectada
+// con la versión nueva. Si el id no es de esta cuenta, simplemente no coincide.
+// Recorre todos los sockets y no solo usersOnline: uno que pasó el handshake pero
+// todavía no hizo `join` también tiene el token viejo.
+function revokeSessions(io, username, { reason, keepSocketId } = {}) {
+  const version = users.bumpSessionVersion(username);
+  const canon = canonicalNick(username);
+  [...io.sockets.sockets.values()].forEach((target) => {
+    if (target.user?.canon !== canon || target.user.role === 'guest') return;
+    if (target.id === keepSocketId) {
+      target.user.sessionVersion = version;
+      return;
+    }
+    target.emit('forceDisconnect', reason || 'Tu sesión se cerró. Inicia sesión de nuevo.');
+    target.disconnect();
+  });
+  return version;
 }
 
 // Un admin no puede moderarse a sí mismo, ni escribiendo su nombre de otra forma.
@@ -424,4 +467,4 @@ function validImageUrl(url) {
   return typeof url === 'string' && /^\/uploads\/[\w.-]+$/.test(url) ? url : null;
 }
 
-module.exports = { setupSocket, syncMuted, sessionForSocket };
+module.exports = { setupSocket, syncMuted, sessionForSocket, revokeSessions };

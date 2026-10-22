@@ -202,6 +202,25 @@ Después entrá con la contraseña sola y volvé a activarla con el celular nuev
 correr eso ya tiene acceso al servidor, así que no abre ninguna puerta nueva: por eso importa
 que el SSH entre **solo con llave**.
 
+### Si sospechás que alguien entró con la cuenta del admin
+
+Desde la app: **Panel de Administración → Sesiones → Cerrar sesión en todos los dispositivos**.
+Cualquier sesión abierta, incluida la de quien tenga una copia de la llave, deja de valer en
+el acto y su conexión se corta. Después entrás de nuevo con contraseña y código.
+
+Si no podés entrar a la app, se hace lo mismo desde el servidor. No hace falta reiniciar: cada
+pedido compara la versión contra la base, y una conexión ya abierta pierde los permisos de
+admin en su próxima acción y queda afuera en cuanto se corte o venza (12 h como mucho).
+
+```bash
+sqlite3 ~/Chatnopolis/data/chat.db \
+  "UPDATE users SET session_version = session_version + 1 WHERE role = 'admin';"
+```
+
+Si además sospechás que se filtró la contraseña, cambiala (hoy, editando el hash con `sqlite3`;
+ver *Endurecimiento pendiente*). Como último recurso, cambiar `JWT_SECRET` en `.env` y
+`pm2 restart chatnopolis` cierra las sesiones de **todas** las cuentas.
+
 ## 11. Renombrar una cuenta (por ejemplo, el admin)
 
 El nombre aparece en la cuenta, en sus mensajes y en las salas que creó: hay que cambiarlo en
@@ -237,16 +256,13 @@ etiqueta vieja, que se puede editar ahí mismo.
 ## Endurecimiento pendiente (ideas futuras)
 
 Ya hecho: rate limiting en `/api/login` y `/api/register`, límite de ritmo de conexiones y de
-mensajes por socket, techo de retención para los privados y `nosniff` en `/uploads`.
-Ver la sección *Límites de frecuencia* de CLAUDE.md. Queda:
+mensajes por socket, techo de retención para los privados, `nosniff` en `/uploads` y sesiones
+revocables con tokens de admin de 12 h. Ver las secciones *Límites de frecuencia* y *Sesiones*
+de CLAUDE.md. Queda:
 
-- **`requireAuth` no revalida contra la base**: confía en lo que dice el token. Un admin baneado
-  conserva el panel por REST hasta que el token expira (7 días). El socket sí lo chequea. Se
-  arregla consultando `users.findByNick()` + `banStatus()` dentro del middleware.
 - `helmet` para el resto de las cabeceras de seguridad (CSP, HSTS, referrer-policy).
 - Validar las fotos por **magic bytes**, no solo por el `Content-Type` que declara quien sube.
 - `multer` 1.x está EOL: subir a 2.x.
-- Tokens de sesión más cortos con renovación, y una forma de invalidarlos al banear.
 - **No existe forma de cambiar una contraseña desde la app** — no hay endpoint ni pantalla.
   De ahí que `ADMIN_PASSWORD` haya que acertarla en el primer arranque: si el admin quedó
   con `admin123` (que es pública), las únicas salidas son borrar `data/chat.db` y empezar

@@ -29,7 +29,7 @@ npm run dev:client   # Vite dev server → http://localhost:5173 (proxy al backe
 server/
   index.js     Arranque Express + Socket.IO, sirve /uploads y client/dist (SPA fallback)
   db.js        SQLite (node:sqlite): tablas + helpers users/rooms/messages/guestBans + seed inicial
-  auth.js      Firmar/verificar tokens JWT; exige JWT_SECRET o aborta el arranque
+  auth.js      Firmar tokens JWT y revalidarlos contra la base (sessionAccount); exige JWT_SECRET o aborta
   legal.js     TERMS_VERSION + edad mínima + los textos de rechazo por falta de consentimiento
   nicks.js     canonicalNick() — forma canónica de un nombre; TODA comparación de identidad pasa por acá
   routes.js    API REST: login, register, rooms, users, upload de fotos + middleware requireAuth/requireAdmin
@@ -133,9 +133,20 @@ Código de 6 dígitos de una app (Google Authenticator, Authy…) además de la 
 - **Tope por cuenta** (`secondFactorBlocked`, 5 fallos / 15 min, en `ratelimit.js`): `loginLimiter` cuenta por IP, y quien llega a este paso ya tiene la contraseña — repartiendo intentos entre IPs podría barrer los códigos. Va por canónica, como todo.
 - **Activar pide contraseña + código, y desactivar también.** Con un token robado solo, nadie le saca la protección a la cuenta ni la activa con *su* celular para dejar afuera al dueño. El secreto queda en `totp_pending` hasta que se confirma: un QR abandonado no protege nada ni deja la cuenta a medias.
 - **Códigos de recuperación**: 10, de un solo uso, se muestran **una única vez** al activar. Se guardan con SHA-256 (no bcrypt: tienen 40 bits al azar, y bcrypt bloquearía el hilo una vez por código). Sirven en el login y para desactivar.
-- **Sesiones ya abiertas no se cierran** al activarla: el JWT dura 7 días y no hay forma de revocarlo (ver "Endurecimiento pendiente" en DEPLOY.md).
+- **Activarla o desactivarla cierra las demás sesiones** de la cuenta (ver *Sesiones*): la pestaña desde la que se hizo recibe un token nuevo y sigue conectada.
 - Si el admin pierde el celular **y** los códigos, se apaga desde el servidor (DEPLOY.md, *Verificación en dos pasos*).
 - La política de privacidad menciona la clave y los hashes que se guardan: si cambia lo que se persiste, se actualiza el texto.
+
+## Sesiones (`server/auth.js`) — IMPORTANTE
+
+Un JWT firmado vale hasta que vence, y antes no había forma de cortarlo: quien copiara la "llave" del navegador del admin entraba días enteros, con 2FA o sin él. Ahora cada token se revalida contra la base.
+
+- **Versión de sesión**: `users.session_version` viaja dentro del token como `sv`. **`sessionAccount(token)`** es el único camino para pasar de token a cuenta (lo usan `requireAuth` y el handshake): firma válida + cuenta existente + `sv` igual a la de la base. `users.bumpSessionVersion()` invalida todos los tokens de la cuenta en el acto. Los tokens anteriores a esta columna no traen `sv` y vuelven al login una vez.
+- **El rol se lee de la fila, nunca del token.** `requireAuth` deja en `req.user` el rol de la base y rechaza con 403 a una cuenta baneada; `isAdmin()` (`server/socket.js`) vuelve a mirar rol y versión en cada acción de moderación, porque un socket puede seguir abierto después de que cambiaron.
+- **Duración**: admin **12 h**, resto **7 días** (`TOKEN_TTL`). El handshake es el único momento en que se mira el token, así que cada socket registrado tiene un timer que lo **corta cuando el token vence** — si no, una conexión abierta sobreviviría días a su token.
+- **`revokeSessions()`** (`server/socket.js`) sube la versión y desconecta **todos** los sockets de la cuenta (recorre `io.sockets.sockets`, no solo `usersOnline`: uno que no hizo `join` también tiene el token viejo). Con `keepSocketId` deja viva la pestaña que pidió el cambio, actualizándole la versión.
+- **Cuándo se cierran**: botón *Cerrar sesión en todos los dispositivos* del `AdminModal` (`POST /api/sessions/revoke`, incluye la propia; no pide contraseña: con un token robado lo único que se logra es echarse a uno mismo también), y al **activar o desactivar el 2FA** (devuelven un token nuevo; el cliente manda `X-Socket-Id` para que su pestaña siga). **Cualquier cambio futuro en cómo se entra a la cuenta** (cambiar contraseña, resetearla) tiene que pasar por `revokeSessions()` igual.
+- **Cliente**: el `auth` del socket en `ChatPage` es una **función** que lee `getSession()` en cada reconexión; con un objeto fijo, la reconexión usaría el token anterior al cambio y nos sacaría.
 
 ## Tema y color (`client/src/index.css`)
 

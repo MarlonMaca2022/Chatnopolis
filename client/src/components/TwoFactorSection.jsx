@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Copy, KeyRound, ShieldCheck } from 'lucide-react';
 import { api } from '../lib/api';
+import { getSession, setSession } from '../lib/session';
 
 const inputClass =
   'w-full px-3 py-2 bg-surface text-ink placeholder:text-ink-faint border border-edge rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent';
@@ -10,10 +11,16 @@ const primaryButton =
 // "ABCD EFGH …" — más fácil de tipear a mano si la cámara no lee el QR
 const groupSecret = (secret) => secret.match(/.{1,4}/g).join(' ');
 
+// Activar o desactivar cierra las demás sesiones y el token viejo deja de valer:
+// sin guardar el nuevo, el próximo pedido (o reconexión) de esta pestaña nos sacaría.
+function keepToken(token) {
+  if (token) setSession({ ...getSession(), token });
+}
+
 // Verificación en dos pasos de la cuenta con la que se entró. Vive en el panel de
 // admin porque hoy es la única cuenta que la necesita; el servidor la soporta para
 // cualquier registrado. Los campos se leen del formulario al enviar, como en AuthPage.
-export default function TwoFactorSection() {
+export default function TwoFactorSection({ socketId }) {
   // null mientras carga; después { enabled, recoveryLeft }
   const [status, setStatus] = useState(null);
   const [setup, setSetup] = useState(null); // { secret, qr } durante la activación
@@ -48,7 +55,8 @@ export default function TwoFactorSection() {
     e.preventDefault();
     const form = e.target;
     step(async () => {
-      const data = await api.enable2fa(form.password.value, form.code.value.trim());
+      const data = await api.enable2fa(form.password.value, form.code.value.trim(), socketId);
+      keepToken(data.token);
       setSetup(null);
       setRecoveryCodes(data.recoveryCodes);
       load();
@@ -59,7 +67,8 @@ export default function TwoFactorSection() {
     e.preventDefault();
     const form = e.target;
     step(async () => {
-      await api.disable2fa(form.password.value, form.code.value.trim());
+      const data = await api.disable2fa(form.password.value, form.code.value.trim(), socketId);
+      keepToken(data.token);
       setDisabling(false);
       load();
     });

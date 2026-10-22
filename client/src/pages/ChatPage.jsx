@@ -62,9 +62,16 @@ export default function ChatPage() {
       // El invitado no tiene cuenta donde guardar la aceptación: su consentimiento
       // viaja acá y el handshake lo exige (ver server/socket.js). Una sesión vieja,
       // guardada antes de que existieran los términos, es rechazada y vuelve al login.
-      auth: session.token
-        ? { token: session.token }
-        : { username: session.username, terms: session.acceptedTerms === true },
+      // Es una función para que cada reconexión lea el token guardado en ese momento:
+      // activar el 2FA renueva el token, y reconectar con el viejo nos sacaría.
+      auth: (cb) => {
+        const current = getSession() || session;
+        cb(
+          current.token
+            ? { token: current.token }
+            : { username: current.username, terms: current.acceptedTerms === true }
+        );
+      },
     });
     socketRef.current = socket;
 
@@ -451,7 +458,7 @@ export default function ChatPage() {
         onClose={() => setShowUsers(false)}
       />
 
-      {showAdmin && <AdminModal onClose={() => setShowAdmin(false)} />}
+      {showAdmin && <AdminModal socketId={socketId} onClose={() => setShowAdmin(false)} />}
     </div>
   );
 }
