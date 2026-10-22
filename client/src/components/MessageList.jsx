@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { ImageOff, Lock, Shield } from 'lucide-react';
+import Avatar from './Avatar.jsx';
 
 function formatTime(iso) {
   if (!iso) return 'Ahora';
@@ -54,11 +55,7 @@ function Message({ data, currentUsername }) {
 
   return (
     <div className={`flex gap-4 message-enter ${isMe ? 'flex-row-reverse' : ''}`}>
-      <div
-        className={`w-8 h-8 rounded-full ${avatarColor} flex-shrink-0 flex items-center justify-center text-xs font-bold shadow-sm`}
-      >
-        {data.username.charAt(0).toUpperCase()}
-      </div>
+      <Avatar name={data.username} className={`${avatarColor} shadow-sm`} />
       <div className={`flex flex-col gap-1 max-w-[75%] ${isMe ? 'items-end' : ''}`}>
         <div className={`flex items-baseline gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
           <span

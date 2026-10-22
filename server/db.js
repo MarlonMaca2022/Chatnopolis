@@ -90,6 +90,9 @@ if (!hasColumn('users', 'totp_secret')) {
 if (!hasColumn('users', 'session_version')) {
   db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
 }
+// Género (server/profile.js). Las cuentas anteriores quedan en NULL: no se les
+// inventa uno, lo eligen ellas desde su perfil.
+if (!hasColumn('users', 'gender')) db.exec('ALTER TABLE users ADD COLUMN gender TEXT');
 
 // Columnas canónicas: se agregan vacías y se rellenan desde el nombre ya guardado.
 function backfillCanon(table, key) {
@@ -160,11 +163,11 @@ const users = {
   // nombre de otro. Devuelve la fila con el `username` original para mostrarlo.
   findByNick: (nick) =>
     db.prepare('SELECT * FROM users WHERE username_canon = ?').get(canonicalNick(nick)),
-  create: ({ username, passwordHash, name, email, country, termsVersion }) =>
+  create: ({ username, passwordHash, name, email, country, gender, termsVersion }) =>
     db.prepare(
-      `INSERT INTO users (username, username_canon, password_hash, name, email, country, accepted_terms_at, terms_version)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)`
-    ).run(username, canonicalNick(username), passwordHash, name, email, country, termsVersion),
+      `INSERT INTO users (username, username_canon, password_hash, name, email, country, gender, accepted_terms_at, terms_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`
+    ).run(username, canonicalNick(username), passwordHash, name, email, country, gender, termsVersion),
 
   // Por canónica, como todo lo que busca por nombre: "María" y "maria" son la
   // misma cuenta y la aceptación tiene que caer en la fila correcta.

@@ -6,6 +6,7 @@ import { setSession } from '../lib/session';
 import { LEGAL } from '../lib/legal';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import LegalFooter from '../components/LegalFooter.jsx';
+import GenderPicker from '../components/GenderPicker.jsx';
 
 const inputClass =
   'w-full px-4 py-3 rounded-lg border border-edge bg-muted text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-accent hover:bg-surface transition-colors';
@@ -87,8 +88,10 @@ export default function AuthPage() {
     const username = e.target.username.value.trim();
     if (!username) return;
     if (!accepted) return setError(consentMissing);
-    // El flag viaja al handshake del socket (ver ChatPage), que es quien lo exige.
-    setSession({ username, role: 'guest', roomId, acceptedTerms: true });
+    // El flag y el género viajan al handshake del socket (ver ChatPage), que es
+    // quien los exige.
+    const gender = e.target.gender.value;
+    setSession({ username, gender, role: 'guest', roomId, acceptedTerms: true });
     navigate('/chat');
   }
 
@@ -141,6 +144,7 @@ export default function AuthPage() {
         name: form.name.value.trim(),
         email: form.email.value.trim(),
         country: form.country.value.trim(),
+        gender: form.gender.value,
         acceptedTerms: accepted,
       });
       setNotice('Cuenta creada exitosamente. ¡Ahora inicia sesión!');
@@ -201,6 +205,7 @@ export default function AuthPage() {
               <label className="block text-sm font-medium text-ink-soft mb-1">Tu Nick / Apodo</label>
               <input name="username" required placeholder="Ej: Viajero_Astral" className={inputClass} />
             </div>
+            <GenderPicker />
             <ConsentCheck checked={accepted} onChange={setAccepted} />
             <button
               type="submit"
@@ -270,6 +275,7 @@ export default function AuthPage() {
               <label className="block text-sm font-medium text-ink-soft mb-1">Usuario (Nick)</label>
               <input name="username" required placeholder="jperez2024" className={smallInputClass} />
             </div>
+            <GenderPicker />
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-ink-soft mb-1">Contraseña</label>

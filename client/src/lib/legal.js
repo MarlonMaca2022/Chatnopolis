@@ -203,11 +203,11 @@ export const LEGAL_PAGES = {
         items: [
           {
             title: 'Si entras como invitado',
-            text: 'Solo el nick que elegiste, mientras dura la sesión. No creamos ninguna cuenta ni guardamos un perfil tuyo.',
+            text: 'Solo el nick y el género (hombre, mujer u otro) que elegiste, mientras dura la sesión. No creamos ninguna cuenta ni guardamos un perfil tuyo. Los dos se muestran en la lista de personas conectadas.',
           },
           {
             title: 'Si tienes cuenta registrada',
-            text: 'Tu nombre de usuario, el nombre que indicaste, tu email, tu país si lo completaste, la fecha de alta, tu estado de moderación y la fecha en que aceptaste estos términos. La contraseña nunca se guarda: se almacena un hash bcrypt, del que no se puede recuperar la original. Si la cuenta tiene activada la verificación en dos pasos, también guardamos la clave que comparte con la app de autenticación y un hash de cada código de recuperación sin usar; al desactivarla se borran.',
+            text: 'Tu nombre de usuario, el nombre que indicaste, tu email, tu país si lo completaste, tu género (hombre, mujer u otro, visible en la lista de personas conectadas), la fecha de alta, tu estado de moderación y la fecha en que aceptaste estos términos. La contraseña nunca se guarda: se almacena un hash bcrypt, del que no se puede recuperar la original. Si la cuenta tiene activada la verificación en dos pasos, también guardamos la clave que comparte con la app de autenticación y un hash de cada código de recuperación sin usar; al desactivarla se borran.',
           },
           {
             title: 'Mensajes',

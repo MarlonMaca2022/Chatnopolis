@@ -3,6 +3,7 @@ const { sessionAccount } = require('./auth');
 const { pruneRoom } = require('./cleanup');
 const { canonicalNick, isReservedNick } = require('./nicks');
 const { TERMS_VERSION, CONSENT_REQUIRED, TERMS_OUTDATED } = require('./legal');
+const { validGender } = require('./profile');
 const {
   clientIp,
   allowConnection,
@@ -12,7 +13,7 @@ const {
   forgetSocket,
 } = require('./ratelimit');
 
-const usersOnline = {}; // { socketId: { username, canon, role, room, isMuted } }
+const usersOnline = {}; // { socketId: { username, canon, role, room, isMuted, gender } }
 
 // Nicks de invitado tomados: canónica -> socketId. Un invitado no tiene cuenta, su
 // identidad es el nombre, así que hay que reservarlo para que no haya dos iguales:
@@ -40,7 +41,7 @@ function setupSocket(io) {
       return next(new Error('Demasiadas conexiones desde tu red. Esperá un minuto.'));
     }
 
-    const { token, username, terms } = socket.handshake.auth || {};
+    const { token, username, terms, gender } = socket.handshake.auth || {};
 
     if (token) {
       const session = sessionAccount(token);
@@ -58,6 +59,7 @@ function setupSocket(io) {
         canon: canonicalNick(dbUser.username),
         role: dbUser.role,
         isMuted: !!dbUser.is_muted,
+        gender: dbUser.gender, // NULL en cuentas anteriores al género
         // Para cortar la conexión cuando vence el token y para revalidar al admin
         sessionVersion: payload.sv,
         expiresAt: payload.exp * 1000,
@@ -69,6 +71,9 @@ function setupSocket(io) {
     // consentimiento viaja en cada handshake y vale para esa sesión. Va primero
     // porque es la comprobación más barata: un booleano, sin tocar la base.
     if (terms !== true) return next(new Error(CONSENT_REQUIRED));
+    // Igual de barato: comparar contra una lista fija. Es obligatorio para que el
+    // filtro de la lista de conectados sirva.
+    if (!validGender(gender)) return next(new Error('Elige si eres hombre, mujer u otro.'));
 
     const nick = (username || '').trim();
     if (!/^[a-zA-Z0-9_\-áéíóúñÁÉÍÓÚÑ ]{3,20}$/.test(nick)) {
@@ -94,7 +99,7 @@ function setupSocket(io) {
       return next(nickInUseError());
     }
     guestNicks.set(canon, socket.id);
-    socket.user = { username: nick, canon, role: 'guest', isMuted: false };
+    socket.user = { username: nick, canon, role: 'guest', isMuted: false, gender };
     next();
   });
 
@@ -458,7 +463,12 @@ function updateRoomUsers(io, room) {
     room,
     users: Object.values(usersOnline)
       .filter((u) => u.room === room)
-      .map(({ username, role, isMuted }) => ({ username, role, isMuted: !!isMuted })),
+      .map(({ username, role, isMuted, gender }) => ({
+        username,
+        role,
+        isMuted: !!isMuted,
+        gender: gender || null,
+      })),
   });
 }
 
