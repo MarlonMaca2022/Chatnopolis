@@ -4,8 +4,8 @@ const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const QRCode = require('qrcode');
 const { users, rooms, guestBans } = require('./db');
-const { signToken, verifyToken } = require('./auth');
-const { syncMuted, sessionForSocket } = require('./socket');
+const { signToken, sessionAccount } = require('./auth');
+const { syncMuted, sessionForSocket, revokeSessions } = require('./socket');
 const { UPLOADS_DIR, uploadUrl, checkQuota, noteUploaded } = require('./uploads');
 const {
   loginLimiter,
@@ -26,12 +26,18 @@ const router = express.Router();
 const DUMMY_HASH = bcrypt.hashSync('contraseña-que-nunca-nadie-usa', 10);
 
 // --- Middleware de autenticación ---
+// Revalida contra la base en cada pedido (sessionAccount): un token robado deja de
+// servir apenas se cierran las sesiones de la cuenta, y uno de una cuenta baneada
+// no sigue abriendo el panel hasta que le venza.
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  const payload = token && verifyToken(token);
-  if (!payload) return res.status(401).json({ success: false, message: 'No autorizado' });
-  req.user = payload;
+  const session = sessionAccount(token);
+  if (!session) return res.status(401).json({ success: false, message: 'No autorizado' });
+  if (users.banStatus(session.user.username).banned) {
+    return res.status(403).json({ success: false, message: 'Tu cuenta está baneada' });
+  }
+  req.user = { username: session.user.username, role: session.user.role };
   next();
 }
 
@@ -225,7 +231,8 @@ router.post('/2fa/enable', loginLimiter, requireAuth, (req, res) => {
   }
   const recoveryCodes = totp.generateRecoveryCodes();
   users.enableTotp(user.username, user.totp_pending, step, recoveryCodes.map(totp.hashRecoveryCode));
-  res.json({ success: true, recoveryCodes });
+  const token = renewAfterSecurityChange(req, user, 'Se activó la verificación en dos pasos en tu cuenta.');
+  res.json({ success: true, recoveryCodes, token });
 });
 
 // Desactivar pide contraseña Y código: con un token robado solo no alcanza para
@@ -243,6 +250,31 @@ router.post('/2fa/disable', loginLimiter, requireAuth, (req, res) => {
   const failure = checkSecondFactor(user, code);
   if (failure) return res.status(failure.status).json({ success: false, message: failure.message });
   users.disableTotp(user.username);
+  const token = renewAfterSecurityChange(req, user, 'Se desactivó la verificación en dos pasos en tu cuenta.');
+  res.json({ success: true, token });
+});
+
+// Cambiar cómo se entra a la cuenta cierra las demás sesiones: si alguien tenía una
+// abierta (o un token copiado), activar el segundo factor no serviría de nada si lo
+// dejara adentro. La pestaña desde la que se hizo el cambio sigue: recibe un token
+// nuevo y su socket, identificado por X-Socket-Id, queda con la versión nueva.
+function renewAfterSecurityChange(req, user, what) {
+  revokeSessions(req.app.get('io'), user.username, {
+    keepSocketId: req.get('X-Socket-Id'),
+    reason: `${what} Inicia sesión de nuevo.`,
+  });
+  return signToken(users.findByNick(user.username));
+}
+
+// --- Sesiones ---
+// "Cerrar sesión en todos los dispositivos", incluido este. Es la salida si se
+// sospecha que alguien entró con la cuenta: su token deja de valer en el acto y la
+// conexión que tenga abierta se corta. No pide contraseña a propósito: quien lo use
+// con un token robado se echa a sí mismo también, y el dueño vuelve a entrar.
+router.post('/sessions/revoke', requireAuth, (req, res) => {
+  revokeSessions(req.app.get('io'), req.user.username, {
+    reason: 'Se cerraron todas las sesiones de tu cuenta. Inicia sesión de nuevo.',
+  });
   res.json({ success: true });
 });
 

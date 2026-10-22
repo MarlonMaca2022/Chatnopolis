@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Shield, Trash2, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { LogOut, Shield, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
+import { clearSession } from '../lib/session';
 import TwoFactorSection from './TwoFactorSection.jsx';
 
 // "43 min" / "2 h 10 min" / "permanente" — until null significa sin vencimiento
@@ -13,7 +15,54 @@ function formatUntil(until) {
   return rest ? `${Math.floor(minutes / 60)} h ${rest} min` : `${Math.floor(minutes / 60)} h`;
 }
 
-export default function AdminModal({ onClose }) {
+// Corta todas las sesiones de la cuenta, esta incluida. Es lo que hay que tocar si
+// se sospecha que alguien más entró: su sesión deja de valer en el acto.
+function SessionsSection() {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function revokeAll() {
+    if (!window.confirm('¿Cerrar la sesión en todos los dispositivos, incluido este?')) return;
+    setError('');
+    setBusy(true);
+    try {
+      await api.revokeSessions();
+      sessionStorage.setItem('disconnect_reason', 'Cerraste la sesión en todos los dispositivos.');
+      clearSession();
+      navigate('/');
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <h4 className="text-sm font-bold text-ink-faint uppercase tracking-wider mb-4 border-b border-edge pb-2">
+        Sesiones
+      </h4>
+      {error && (
+        <p className="mb-3 text-sm text-red-600 bg-red-50 p-2 rounded-lg border border-red-200 dark:bg-red-400/10 dark:border-red-400/25 dark:text-red-300">
+          {error}
+        </p>
+      )}
+      <p className="text-sm text-ink-soft mb-3">
+        Si crees que alguien más entró con tu cuenta, cierra todas las sesiones: la suya deja de
+        funcionar al instante y tú vuelves a entrar con tu contraseña.
+      </p>
+      <button
+        onClick={revokeAll}
+        disabled={busy}
+        className="px-4 py-2 rounded-lg text-sm flex items-center gap-2 border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-400/25 dark:text-red-300 dark:hover:bg-red-400/10 disabled:opacity-60 transition"
+      >
+        <LogOut size={14} /> Cerrar sesión en todos los dispositivos
+      </button>
+    </div>
+  );
+}
+
+export default function AdminModal({ socketId, onClose }) {
   const [rooms, setRooms] = useState([]);
   const [users, setUsers] = useState([]);
   const [guestBans, setGuestBans] = useState([]);
@@ -230,7 +279,9 @@ export default function AdminModal({ onClose }) {
             )}
           </div>
 
-          <TwoFactorSection />
+          <TwoFactorSection socketId={socketId} />
+
+          <SessionsSection />
         </div>
       </div>
     </div>

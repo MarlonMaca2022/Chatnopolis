@@ -84,6 +84,12 @@ if (!hasColumn('users', 'totp_secret')) {
     ALTER TABLE users ADD COLUMN totp_recovery TEXT;
   `);
 }
+// Versión de sesión: viaja dentro de cada token (`sv`) y el token solo vale mientras
+// coincida con la de la base. Subirla invalida en el acto todas las sesiones de la
+// cuenta, que es lo único que permite cortar un token robado antes de que venza.
+if (!hasColumn('users', 'session_version')) {
+  db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
+}
 
 // Columnas canónicas: se agregan vacías y se rellenan desde el nombre ya guardado.
 function backfillCanon(table, key) {
@@ -214,6 +220,13 @@ const users = {
     }
     return { banned: true, until: row.banned_until || null };
   },
+
+  // Invalida todos los tokens firmados hasta ahora. Devuelve la versión nueva, que es
+  // la que tiene que llevar cualquier token que se firme después.
+  bumpSessionVersion: (username) =>
+    db.prepare(
+      'UPDATE users SET session_version = session_version + 1 WHERE username = ? RETURNING session_version'
+    ).get(username).session_version,
 };
 
 // --- Rooms ---

@@ -24,8 +24,13 @@ export const api = {
     request('/login', { method: 'POST', body: { username, password, acceptedTerms, code } }),
   get2fa: () => request('/2fa'),
   setup2fa: () => request('/2fa/setup', { method: 'POST' }),
-  enable2fa: (password, code) => request('/2fa/enable', { method: 'POST', body: { password, code } }),
-  disable2fa: (password, code) => request('/2fa/disable', { method: 'POST', body: { password, code } }),
+  // Activar o desactivar el 2FA cierra las demás sesiones de la cuenta y devuelve un
+  // token nuevo. socketId es la conexión de esta pestaña, la única que sigue abierta.
+  enable2fa: (password, code, socketId) =>
+    request('/2fa/enable', { method: 'POST', body: { password, code }, headers: socketHeader(socketId) }),
+  disable2fa: (password, code, socketId) =>
+    request('/2fa/disable', { method: 'POST', body: { password, code }, headers: socketHeader(socketId) }),
+  revokeSessions: () => request('/sessions/revoke', { method: 'POST' }),
   register: (payload) => request('/register', { method: 'POST', body: payload }),
   createRoom: (name) => request('/rooms', { method: 'POST', body: { name } }),
   deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),
@@ -42,7 +47,11 @@ export const api = {
     return request('/upload', {
       method: 'POST',
       body: form,
-      headers: socketId ? { 'X-Socket-Id': socketId } : {},
+      headers: socketHeader(socketId),
     });
   },
 };
+
+function socketHeader(socketId) {
+  return socketId ? { 'X-Socket-Id': socketId } : {};
+}
