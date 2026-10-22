@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { ArrowLeftRight, Hash, LogOut, Menu, Shield, User, ChevronRight, Users, X } from 'lucide-react';
+import { ArrowLeftRight, Hash, LogOut, Menu, Shield, ChevronRight, Users, X } from 'lucide-react';
 import { getSession, clearSession } from '../lib/session';
 import { api } from '../lib/api';
 import MessageList from '../components/MessageList.jsx';
@@ -10,6 +10,7 @@ import UserList from '../components/UserList.jsx';
 import AdminModal from '../components/AdminModal.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import LegalFooter from '../components/LegalFooter.jsx';
+import Avatar from '../components/Avatar.jsx';
 
 const BAN_LABELS = { 10: '10 minutos', 60: '1 hora', 240: '4 horas' };
 
@@ -69,7 +70,7 @@ export default function ChatPage() {
         cb(
           current.token
             ? { token: current.token }
-            : { username: current.username, terms: current.acceptedTerms === true }
+            : { username: current.username, gender: current.gender, terms: current.acceptedTerms === true }
         );
       },
     });
@@ -338,9 +339,7 @@ export default function ChatPage() {
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-muted text-ink-soft flex items-center justify-center text-xs font-bold">
-                    {dmUser.charAt(0).toUpperCase()}
-                  </div>
+                  <Avatar name={dmUser} />
                   <span className="truncate max-w-[120px]">{dmUser}</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -369,9 +368,7 @@ export default function ChatPage() {
 
       <div className="p-4 border-t border-edge bg-app flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-accent-soft flex items-center justify-center text-accent-ink font-bold">
-            <User size={18} />
-          </div>
+          <Avatar name={username} size="w-10 h-10 text-sm" className="bg-accent-soft text-accent-ink" />
           <div>
             <p className="text-sm font-semibold text-ink truncate max-w-[100px]">{username}</p>
             <p className="text-xs text-emerald-600 dark:text-emerald-400">
@@ -422,7 +419,7 @@ export default function ChatPage() {
             >
               <Users size={22} />
               {onlineUsers.length > 0 && (
-                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center">
+                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">
                   {onlineUsers.length}
                 </span>
               )}
@@ -433,8 +430,14 @@ export default function ChatPage() {
           </button>
         </header>
 
-        <div className="hidden md:flex h-14 items-center px-6 border-b border-edge bg-panel shrink-0">
-          <h2 className="font-bold text-accent-ink">{headerTitle}</h2>
+        <div className="hidden md:flex h-14 items-center justify-between gap-4 px-6 border-b border-edge bg-panel shrink-0">
+          <h2 className="font-bold text-accent-ink truncate">{headerTitle}</h2>
+          {/* Conectados de la sala actual: la misma cuenta que la lista de la derecha */}
+          <span className="flex items-center gap-1.5 text-sm text-ink-soft shrink-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="font-semibold text-emerald-600 dark:text-emerald-400">{onlineUsers.length}</span>
+            en línea
+          </span>
         </div>
 
         <MessageList messages={activeMessages} currentUsername={username} />

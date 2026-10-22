@@ -15,6 +15,7 @@ const {
 } = require('./ratelimit');
 const totp = require('./totp');
 const { isReservedNick } = require('./nicks');
+const { validGender } = require('./profile');
 const { TERMS_VERSION, CONSENT_REQUIRED } = require('./legal');
 
 const router = express.Router();
@@ -119,11 +120,12 @@ router.post('/login', loginLimiter, (req, res) => {
     username: user.username,
     role: user.role,
     name: user.name,
+    gender: user.gender,
   });
 });
 
 router.post('/register', registerLimiter, (req, res) => {
-  const { username, password, name, email, country, acceptedTerms } = req.body || {};
+  const { username, password, name, email, country, gender, acceptedTerms } = req.body || {};
 
   if (!username || !password || !name || !email) {
     return res.status(400).json({ success: false, message: 'Faltan datos obligatorios' });
@@ -132,6 +134,9 @@ router.post('/register', registerLimiter, (req, res) => {
   // La declaración de edad y la aceptación valen porque se exigen acá.
   if (acceptedTerms !== true) {
     return res.status(400).json({ success: false, message: CONSENT_REQUIRED });
+  }
+  if (!validGender(gender)) {
+    return res.status(400).json({ success: false, message: 'Elige si eres hombre, mujer u otro' });
   }
   // Campos de texto libre: sin un techo, un POST puede meter megabytes por fila.
   if (name.length > 60 || email.length > 120 || (country && country.length > 60)) {
@@ -163,6 +168,7 @@ router.post('/register', registerLimiter, (req, res) => {
     name,
     email,
     country: country || null,
+    gender,
     termsVersion: TERMS_VERSION,
   });
 

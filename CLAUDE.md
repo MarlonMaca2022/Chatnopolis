@@ -38,11 +38,14 @@ server/
   socket.js    Chat en tiempo real; el rol se re-verifica server-side (no se confía en el cliente)
   uploads.js   UPLOADS_DIR + removeUploadFile() (único módulo que borra fotos) + cuotas y techo de disco
   cleanup.js   Poda de historial y barrido de fotos vencidas/huérfanas (startCleanupJobs)
+  profile.js   Datos de perfil: GENDERS + validGender()
 client/
   src/pages/         AuthPage (invitado/login/registro), ChatPage, LegalPage (renderiza las 3 legales)
   src/components/     MessageList, MessageInput (fotos solo en DM), UserList, AdminModal,
-                     TwoFactorSection (2FA, dentro del AdminModal), AgeGate (aviso 18+), LegalFooter
+                     TwoFactorSection (2FA, dentro del AdminModal), AgeGate (aviso 18+), LegalFooter,
+                     Avatar (círculo con inicial), GenderPicker ("Soy": radios name="gender")
   src/lib/           api.js (fetch wrapper + uploadPhoto), session.js (token en localStorage),
+                     gender.js (textos de cada género; los ids los decide server/profile.js),
                      compressImage.js (redimensiona/reencoda antes de subir),
                      legal.js (texto de términos/privacidad/seguridad + responsable legal)
   vite.config.js     dev server + proxy
@@ -171,6 +174,7 @@ Identidad: **verde petróleo**. La paleta de marca vive en `@theme` como `--colo
 - **Una sala a la vez, y cualquiera puede cambiar.** La sala inicial se elige **antes de entrar** (el `<select>` de `AuthPage`, que se llena con `GET /api/rooms`). En el sidebar de `ChatPage` el usuario común ve **"Tu sala"** y un botón **Cambiar** que despliega las demás (`showRoomPicker` → `visibleRooms`); el admin ve siempre la lista entera de `roomsMap`, porque moderar es recorrerlas. Al elegir una, el cliente emite `join` y el servidor sale de la sala anterior, entra a la nueva y reenvía el historial: cada socket está en **una sola** sala (`usersOnline[socket.id].room`). `roomId` es estado con un `roomIdRef` para que el handler `message` (registrado una sola vez) enrute al valor actual. El botón de la sala propia sigue siendo clickeable: estando en un DM es la forma de volver a la sala.
 - **Los privados sobreviven al cambio de sala.** El servidor rutea los DM por identidad (`socketIdsFor()`), no por sala, y el cliente no toca `dms`/`chats` al cambiar — solo se reemplaza el historial de la sala nueva. Lo que sí cambia es `UserList`: muestra los conectados **de la sala actual**, así que alguien de otra sala sale de la lista pero su DM abierto sigue en el sidebar.
 - **Cerrar un privado** (la X de cada DM en el sidebar, `closeDM()`) solo lo saca de `dms`: **no borra nada**, ni en el servidor ni en `chats`, así que reabrirlo muestra lo hablado. Si el otro vuelve a escribir, el handler `message` lo reabre solo. La X aparece con hover y, como en el celular no hay hover, siempre en la conversación activa.
+- **Género** (`hombre` / `mujer` / `otro`, `GENDERS` en `server/profile.js`): obligatorio para entrar como invitado (viaja en el **handshake**, `auth.gender`, validado justo después de `terms`) y para registrarse (`POST /api/register` → 400). Registrados: `users.gender`; las cuentas anteriores quedan en `NULL` — no se les inventa uno. Invitados: solo en `socket.user`. Viaja a todos en `roomUsers` (`gender`, `null` si no hay) y `UserList` lo pinta como etiqueta azul y filtra con los chips **Todos / Hombres / Mujeres / Otro** (quien no tiene género solo aparece en Todos). El filtro es estado de `UserList`, compartido por la columna y el drawer móvil. La política de privacidad lo menciona: si cambia lo que se guarda, se actualiza el texto.
 - **Usuarios en línea en móvil:** `UserList.jsx` renderiza el mismo contenido dos veces — columna fija (`hidden md:flex`) y drawer overlay a la derecha (`md:hidden`) controlado por las props `open`/`onClose` desde `ChatPage`. Se abre con el icono 👥 del header móvil, que muestra el contador de conectados.
 - **Emojis:** botón 😊 en `MessageInput.jsx` abre un popover con `emoji-picker-react`; el emoji se inserta en la posición del cursor y viaja como texto normal (sin cambios en servidor ni base de datos).
 - **`JWT_SECRET` es obligatoria y el modo estricto es el default** (`server/auth.js`): sin ella el proceso aborta con instrucciones, y también rechaza los valores de ejemplo (el de `DEPLOY.md`, el viejo default del repo). El chequeo **no** pregunta por `NODE_ENV === 'production'` porque nadie la setea en el VPS — pm2 arranca sin ella y el chequeo no protegería nada. Se relaja solo con `NODE_ENV=development`, que lo pone `nodemon.json`, así que `npm run dev` sigue andando sin `.env` (con aviso). Si agregás otro script de arranque para desarrollo, tiene que setear esa variable.
