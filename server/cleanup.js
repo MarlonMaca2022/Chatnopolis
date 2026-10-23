@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { messages } = require('./db');
+const { messages, users } = require('./db');
 const {
   UPLOADS_DIR,
   uploadUrl,
@@ -56,7 +56,9 @@ function sweepPhotos() {
     }
   }
 
-  const referenced = new Set(messages.referencedImages());
+  // Las fotos de perfil también cuentan: no tienen mensaje, y sin esto el barrido
+  // las tomaría por huérfanas y las borraría a la hora de subirlas.
+  const referenced = new Set([...messages.referencedImages(), ...users.avatarUrls()]);
   const orphanCutoffMs = minutesAgo(ORPHAN_GRACE_MINUTES).getTime();
   let files;
   try {

@@ -12,7 +12,7 @@
 export const LEGAL = {
   nombre: 'Chatnopolis',
   contacto: 'info@chatnopolis.com',
-  actualizado: '14 de agosto de 2026',
+  actualizado: '22 de octubre de 2026',
   edadMinima: 18,
 };
 
@@ -46,7 +46,7 @@ export const LEGAL_PAGES = {
         heading: 'Contenido para adultos',
         paragraphs: [
           'Entre personas adultas y de común acuerdo, se permite hablar de temas sexuales y compartir contenido adulto por mensaje privado. Es por eso mismo que la edad mínima no es negociable.',
-          'Ese permiso tiene límites claros. El contenido sexual explícito va únicamente por privado y entre personas que lo consienten: las salas públicas no son el lugar, y el chat técnicamente solo permite enviar fotos por privado.',
+          'Ese permiso tiene límites claros. El contenido sexual explícito va únicamente por privado y entre personas que lo consienten: las salas públicas no son el lugar, y el chat técnicamente solo permite enviar fotos por privado. Tu foto de perfil se ve en las salas públicas, así que tampoco puede tener desnudos ni contenido sexual.',
           'Nadie está obligado a recibir nada. Enviar contenido sexual a quien no lo pidió, o insistir después de una negativa, es acoso y se sanciona como tal, aunque ocurra en un privado.',
         ],
       },
@@ -147,6 +147,7 @@ export const LEGAL_PAGES = {
           'Las fotos se envían únicamente por mensaje privado, pesan como máximo 5 MB y deben ser imágenes (jpg, png, gif o webp).',
           'Las fotos se borran automáticamente de nuestro servidor 24 horas después de subirse. El mensaje sobrevive, pero la imagen desaparece y en su lugar aparece "Foto vencida".',
           'Ese borrado protege el almacenamiento, no tu privacidad: quien recibió la foto pudo haberle sacado una captura o haberla descargado durante esas horas. Una vez que envías una imagen, pierdes el control sobre ella.',
+          'La foto de perfil es distinta: solo pueden ponerla las cuentas registradas, no vence a las 24 horas y la ve todo el que esté en la sala. Por eso no puede tener desnudos, contenido sexual, menores ni fotos de otras personas. Un moderador puede quitarla en cualquier momento.',
         ],
       },
       {
@@ -155,6 +156,7 @@ export const LEGAL_PAGES = {
         paragraphs: [
           'Eres responsable de tu contraseña y de todo lo que ocurra desde tu cuenta. Si crees que alguien accedió a ella, cámbiala y avísanos.',
           'Los nicks de invitado no te pertenecen: se reservan solo mientras estás conectado, y cuando te vas cualquier otra persona puede tomarlo. Si quieres que tu nombre sea tuyo, registra una cuenta.',
+          'Como invitado puedes cambiar tu nick desde Mi perfil sin salir del chat: el anterior queda libre en ese momento y la sala ve el cambio. El nombre de una cuenta registrada no se puede cambiar.',
         ],
       },
       {
@@ -218,6 +220,10 @@ export const LEGAL_PAGES = {
             title: 'Fotos',
             text: 'Las imágenes que envías por privado se guardan como archivos en el servidor y el mensaje conserva su dirección.',
           },
+          {
+            title: 'Foto de perfil',
+            text: 'Si tu cuenta tiene foto de perfil, se guarda como archivo en el servidor y la ve cualquiera que esté en tu sala.',
+          },
         ],
       },
       {
@@ -236,6 +242,10 @@ export const LEGAL_PAGES = {
           {
             title: 'Fotos',
             text: 'El archivo se borra del servidor 24 horas después de subirse. El mensaje queda, marcado como "Foto vencida".',
+          },
+          {
+            title: 'Foto de perfil',
+            text: 'Se conserva mientras la tengas puesta. Cuando la cambias o la quitas, o la quita un moderador, el archivo anterior se borra en el momento.',
           },
           {
             title: 'Historial de privados con invitados',

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { ArrowLeftRight, Hash, LogOut, Menu, Shield, ChevronRight, Users, X } from 'lucide-react';
-import { getSession, clearSession } from '../lib/session';
+import { getSession, setSession, clearSession } from '../lib/session';
 import { api } from '../lib/api';
 import MessageList from '../components/MessageList.jsx';
 import MessageInput from '../components/MessageInput.jsx';
@@ -11,6 +11,7 @@ import AdminModal from '../components/AdminModal.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import LegalFooter from '../components/LegalFooter.jsx';
 import Avatar from '../components/Avatar.jsx';
+import ProfileModal from '../components/ProfileModal.jsx';
 import { quoteLabel } from '../lib/messages';
 
 const BAN_LABELS = { 10: '10 minutos', 60: '1 hora', 240: '4 horas' };
@@ -57,7 +58,19 @@ export default function ChatPage() {
   // El servidor igual ignora citas de otra sala u otro privado.
   useEffect(() => setReplyingTo(null), [activeView.type, activeView.target]);
 
-  const username = session?.username;
+  // Estado y no una lectura de `session`: el invitado puede cambiarse el nick desde
+  // Mi perfil sin reconectar. El ref es para el handler `message`, registrado una vez.
+  const [username, setUsername] = useState(session?.username);
+  const usernameRef = useRef(username);
+  usernameRef.current = username;
+  const [showProfile, setShowProfile] = useState(false);
+
+  // Foto de perfil vigente de cada conectado de la sala. Gana sobre la que trae el
+  // mensaje: si alguien la cambió o un moderador la quitó, se ve la actual.
+  const onlineAvatars = useMemo(
+    () => Object.fromEntries(onlineUsers.map((u) => [u.username, u.avatarUrl])),
+    [onlineUsers]
+  );
 
   const pushMessage = useCallback((key, msg) => {
     setChats((prev) => ({ ...prev, [key]: [...(prev[key] || []), msg] }));
@@ -137,7 +150,7 @@ export default function ChatPage() {
     socket.on('message', (data) => {
       let key;
       if (data.isPrivate) {
-        key = data.from === session.username ? data.to : data.from;
+        key = data.from === usernameRef.current ? data.to : data.from;
         setDms((prev) => (prev.includes(key) ? prev : [...prev, key]));
       } else {
         key = roomIdRef.current;
@@ -192,6 +205,36 @@ export default function ChatPage() {
   if (!session) return null;
 
   const isAdmin = session.role === 'admin';
+  // Mi entrada en la lista de la sala; mientras no llega, lo que sabe la sesión
+  const me = onlineUsers.find((u) => u.username === username) || {
+    username,
+    role: session.role,
+    gender: session.gender ?? null,
+    avatarUrl: null,
+  };
+
+  // Cambio de nick/género de un invitado. Promesa para que el modal muestre el error.
+  function saveGuestProfile(newName, gender) {
+    return new Promise((resolve, reject) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return reject(new Error('Sin conexión. Probá de nuevo en unos segundos.'));
+      socket.emit('profile:update', { username: newName, gender }, (res) => {
+        if (!res?.ok) return reject(new Error(res?.message || 'No se pudo guardar'));
+        // La sesión guardada también: si se recarga o reconecta, entra con el nombre nuevo
+        setSession({ ...getSession(), username: res.username, gender: res.gender });
+        setUsername(res.username);
+        resolve();
+      });
+    });
+  }
+
+  // "Crear una cuenta" desde Mi perfil: sale del chat y abre el registro con el
+  // nick y el género precargados (AuthPage lee register_prefill).
+  function createAccount() {
+    sessionStorage.setItem('register_prefill', JSON.stringify({ username, gender: me.gender }));
+    clearSession();
+    navigate('/');
+  }
 
   function openDM(target) {
     setDms((prev) => (prev.includes(target) ? prev : [...prev, target]));
@@ -268,6 +311,7 @@ export default function ChatPage() {
     const prompts = {
       mute: isMuted ? `¿Quitar el silencio a ${targetUser}?` : `¿Silenciar a ${targetUser}?`,
       kick: `¿Expulsar a ${targetUser}? Podrá volver a entrar enseguida.`,
+      removeAvatar: `¿Quitar la foto de perfil de ${targetUser}?`,
       ban: durationMinutes
         ? `¿Banear a ${targetUser} por ${BAN_LABELS[durationMinutes]}?`
         : `¿Banear a ${targetUser} de forma permanente?`,
@@ -377,7 +421,7 @@ export default function ChatPage() {
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <Avatar name={dmUser} />
+                  <Avatar name={dmUser} src={onlineAvatars[dmUser]} />
                   <span className="truncate max-w-[120px]">{dmUser}</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -405,15 +449,27 @@ export default function ChatPage() {
       </div>
 
       <div className="p-4 border-t border-edge bg-app flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Avatar name={username} size="w-10 h-10 text-sm" className="bg-accent-soft text-accent-ink" />
-          <div>
-            <p className="text-sm font-semibold text-ink truncate max-w-[100px]">{username}</p>
+        <button
+          onClick={() => {
+            setShowProfile(true);
+            setShowSidebar(false);
+          }}
+          className="flex items-center gap-3 min-w-0 -m-1 p-1 rounded-lg text-left hover:bg-muted transition"
+          title="Mi perfil"
+        >
+          <Avatar
+            name={username}
+            src={me.avatarUrl}
+            size="w-10 h-10 text-sm"
+            className="bg-accent-soft text-accent-ink"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink truncate max-w-[120px]">{username}</p>
             <p className="text-xs text-emerald-600 dark:text-emerald-400">
-              {connected ? 'En línea' : 'Conectando…'}
+              {connected ? 'En línea' : 'Conectando…'} · <span className="text-ink-faint">Mi perfil</span>
             </p>
           </div>
-        </div>
+        </button>
         <button onClick={logout} className="p-2 text-ink-faint hover:text-red-500 transition" title="Cerrar Sesión">
           <LogOut size={18} />
         </button>
@@ -481,6 +537,7 @@ export default function ChatPage() {
         <MessageList
           messages={activeMessages}
           currentUsername={username}
+          avatars={onlineAvatars}
           canDelete={isAdmin && activeView.type === 'room'}
           onReact={react}
           onReply={setReplyingTo}
@@ -509,6 +566,14 @@ export default function ChatPage() {
       />
 
       {showAdmin && <AdminModal socketId={socketId} onClose={() => setShowAdmin(false)} />}
+      {showProfile && (
+        <ProfileModal
+          me={me}
+          onClose={() => setShowProfile(false)}
+          onGuestSave={saveGuestProfile}
+          onCreateAccount={createAccount}
+        />
+      )}
     </div>
   );
 }

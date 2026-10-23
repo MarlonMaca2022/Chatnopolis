@@ -1,6 +1,7 @@
 const { users, rooms, messages, guestBans } = require('./db');
 const { sessionAccount } = require('./auth');
 const { pruneRoom } = require('./cleanup');
+const { removeUploadFile } = require('./uploads');
 const { canonicalNick, isReservedNick } = require('./nicks');
 const { TERMS_VERSION, CONSENT_REQUIRED, TERMS_OUTDATED } = require('./legal');
 const { validGender } = require('./profile');
@@ -67,6 +68,7 @@ function setupSocket(io) {
         role: dbUser.role,
         isMuted: !!dbUser.is_muted,
         gender: dbUser.gender, // NULL en cuentas anteriores al género
+        avatarUrl: dbUser.avatar_url,
         // Para cortar la conexión cuando vence el token y para revalidar al admin
         sessionVersion: payload.sv,
         expiresAt: payload.exp * 1000,
@@ -83,28 +85,9 @@ function setupSocket(io) {
     if (!validGender(gender)) return next(new Error('Elige si eres hombre, mujer u otro.'));
 
     const nick = (username || '').trim();
-    if (!/^[a-zA-Z0-9_\-áéíóúñÁÉÍÓÚÑ ]{3,20}$/.test(nick)) {
-      return next(new Error('Nick inválido (3-20 caracteres)'));
-    }
-    if (isReservedNick(nick)) return next(new Error('Ese nombre está reservado. Elige otro.'));
+    const problem = guestNickProblem(io, nick, socket.id);
+    if (problem) return next(problem);
     const canon = canonicalNick(nick);
-    const guestBan = guestBans.status(nick);
-    if (guestBan.banned) return next(new Error(banMessage(guestBan.until, 'Este nombre está baneado')));
-    // Por canónica: si no, "Admin" no colisiona con "admin" y el invitado entra
-    // usando el nombre de un registrado (SQLite compara texto byte a byte).
-    if (users.findByNick(nick)) {
-      return next(new Error('Ese nombre pertenece a un usuario registrado. Elige otro.'));
-    }
-    // Si el que tenía la reserva ya no está conectado, el nombre se cede: así una
-    // reserva colgada (conexión cortada antes de entrar) no bloquea el nick.
-    const holder = guestNicks.get(canon);
-    if (holder && holder !== socket.id && io.sockets.sockets.has(holder)) {
-      // Nunca cedemos el nick al que llega — eso sería justo el robo de nombre que
-      // estamos evitando. Va con código para que el cliente pueda reintentar: si al
-      // invitado se le cortó la red, su socket viejo sigue vivo acá hasta el
-      // pingTimeout y el que choca con la reserva es él mismo (ver ChatPage).
-      return next(nickInUseError());
-    }
     guestNicks.set(canon, socket.id);
     // sinceId: los privados anteriores a esta sesión no son de esta persona aunque
     // tengan su nick (ver dmVisibleFrom).
@@ -180,6 +163,7 @@ function setupSocket(io) {
         id,
         username: user.username,
         role: user.role,
+        avatarUrl: user.avatarUrl || null,
         text: cleanText,
         imageUrl: null,
         replyTo: quoted ? replyPreview(quoted) : null,
@@ -226,6 +210,7 @@ function setupSocket(io) {
       const data = {
         id,
         username: user.username,
+        avatarUrl: user.avatarUrl || null,
         text: cleanText,
         imageUrl: cleanImage,
         isPrivate: true,
@@ -265,6 +250,45 @@ function setupSocket(io) {
           to: m.recipient,
         })),
       });
+    });
+
+    // Mi perfil de un invitado: nick y género, sin reconectar. Los registrados
+    // cambian el género por REST (PATCH /api/profile) y su nombre es fijo: es con lo
+    // que entran y de lo que cuelgan sus privados y sus bans.
+    socket.on('profile:update', ({ username, gender } = {}, ack) => {
+      const reply = typeof ack === 'function' ? ack : () => {};
+      const me = usersOnline[socket.id];
+      if (!me || me.role !== 'guest') return reply({ ok: false, message: 'Solo los invitados cambian el nick.' });
+      if (!allowQuery(socket.id)) return reply({ ok: false, message: 'Vas demasiado rápido. Esperá unos segundos.' });
+      // Silenciado no: cambiarse el nombre serviría para que nadie sepa quién es,
+      // y un nick nuevo es la mitad de lo que hace falta para evadir una sanción.
+      if (me.isMuted) return reply({ ok: false, message: 'Estás silenciado.' });
+      if (!validGender(gender)) return reply({ ok: false, message: 'Elige si eres hombre, mujer u otro.' });
+
+      const nick = typeof username === 'string' ? username.trim() : '';
+      const oldName = me.username;
+      const problem = guestNickProblem(io, nick, socket.id);
+      if (problem) return reply({ ok: false, message: problem.message });
+
+      // La reserva se mueve: el nick viejo queda libre en el acto
+      const canon = canonicalNick(nick);
+      if (canon !== me.canon) {
+        if (guestNicks.get(me.canon) === socket.id) guestNicks.delete(me.canon);
+        guestNicks.set(canon, socket.id);
+      }
+      // Con otro nick es otra identidad: sinceId vuelve a empezar. Si no, quien toma
+      // el nick que otro acaba de soltar podría citar los privados que ese otro
+      // mandó mientras esta sesión ya estaba abierta (ver dmVisibleFrom).
+      const identity = { username: nick, canon, gender };
+      if (canon !== me.canon) identity.sinceId = messages.lastId();
+      Object.assign(socket.user, identity);
+      Object.assign(me, identity);
+
+      if (nick !== oldName) {
+        io.to(me.room).emit('message', system(`${oldName} ahora se llama ${nick}.`));
+      }
+      updateRoomUsers(io, me.room);
+      reply({ ok: true, username: nick, gender });
     });
 
     // Reacción: toggle de un emoji del set fijo sobre un mensaje que esta persona ve.
@@ -314,6 +338,19 @@ function setupSocket(io) {
       if (!isAdmin(socket) || !Number.isInteger(id)) return;
       const room = messages.removeRoomMessage(id);
       if (room) io.to(room).emit('messageDeleted', { id });
+    });
+
+    // Las fotos de perfil se ven en las salas públicas: el admin tiene que poder
+    // sacar una inapropiada sin esperar a que el dueño la cambie.
+    socket.on('admin:removeAvatar', (targetUsername) => {
+      if (!isAdmin(socket) || typeof targetUsername !== 'string') return;
+      const dbUser = users.findByNick(targetUsername);
+      if (!dbUser?.avatar_url) return;
+      removeUploadFile(users.setAvatar(dbUser.username, null));
+      syncProfile(io, dbUser.username, { avatarUrl: null });
+      liveSockets(io, dbUser.username).forEach((target) =>
+        target.emit('message', system('Un moderador quitó tu foto de perfil.', 'system-error'))
+      );
     });
 
     socket.on('admin:mute', (targetUsername) => {
@@ -430,6 +467,7 @@ function historyPayload(rows, extra = () => ({})) {
     text: m.text,
     imageUrl: m.imageUrl,
     imageExpired: !!m.imageExpired,
+    avatarUrl: m.avatarUrl,
     createdAt: m.createdAt,
     replyTo:
       m.replyToId == null
@@ -445,6 +483,35 @@ function historyPayload(rows, extra = () => ({})) {
     reactions: reactions[m.id] || {},
     ...extra(m),
   }));
+}
+
+// ¿Puede un invitado usar este nick? Devuelve null o el Error a mostrar. Lo usan los
+// dos caminos por los que un invitado elige nombre: el handshake y el cambio de nick
+// desde Mi perfil — si fueran dos chequeos, tarde o temprano uno dejaría pasar lo
+// que el otro frena.
+function guestNickProblem(io, nick, socketId) {
+  if (!/^[a-zA-Z0-9_\-áéíóúñÁÉÍÓÚÑ ]{3,20}$/.test(nick)) {
+    return new Error('Nick inválido (3-20 caracteres)');
+  }
+  if (isReservedNick(nick)) return new Error('Ese nombre está reservado. Elige otro.');
+  const guestBan = guestBans.status(nick);
+  if (guestBan.banned) return new Error(banMessage(guestBan.until, 'Este nombre está baneado'));
+  // Por canónica: si no, "Admin" no colisiona con "admin" y el invitado entra
+  // usando el nombre de un registrado (SQLite compara texto byte a byte).
+  if (users.findByNick(nick)) {
+    return new Error('Ese nombre pertenece a un usuario registrado. Elige otro.');
+  }
+  // Si el que tenía la reserva ya no está conectado, el nombre se cede: así una
+  // reserva colgada (conexión cortada antes de entrar) no bloquea el nick.
+  const holder = guestNicks.get(canonicalNick(nick));
+  if (holder && holder !== socketId && io.sockets.sockets.has(holder)) {
+    // Nunca cedemos el nick al que llega — eso sería justo el robo de nombre que
+    // estamos evitando. Va con código para que el cliente pueda reintentar: si al
+    // invitado se le cortó la red, su socket viejo sigue vivo acá hasta el
+    // pingTimeout y el que choca con la reserva es él mismo (ver ChatPage).
+    return nickInUseError();
+  }
+  return null;
 }
 
 // El `data` de un error de handshake llega al cliente como err.data
@@ -508,6 +575,22 @@ function syncMuted(io, username, isMuted) {
   });
 }
 
+// Aplica un cambio de perfil (género, foto) a las sesiones vivas de una cuenta, con
+// el mismo patrón que syncMuted: socket.user es de donde `join` reconstruye la
+// entrada, así que se escribe ahí y en usersOnline, y se repinta cada sala afectada.
+function syncProfile(io, username, fields) {
+  const rooms = new Set();
+  liveSockets(io, username).forEach((target) => {
+    Object.assign(target.user, fields);
+    const online = usersOnline[target.id];
+    if (online) {
+      Object.assign(online, fields);
+      rooms.add(online.room);
+    }
+  });
+  rooms.forEach((room) => updateRoomUsers(io, room));
+}
+
 // Se vuelve a mirar la base en cada acción: el rol del handshake puede haber cambiado
 // o las sesiones de la cuenta pueden haberse cerrado mientras este socket seguía
 // abierto. Son acciones esporádicas, así que la consulta no cuesta nada.
@@ -569,11 +652,12 @@ function updateRoomUsers(io, room) {
     room,
     users: Object.values(usersOnline)
       .filter((u) => u.room === room)
-      .map(({ username, role, isMuted, gender }) => ({
+      .map(({ username, role, isMuted, gender, avatarUrl }) => ({
         username,
         role,
         isMuted: !!isMuted,
         gender: gender || null,
+        avatarUrl: avatarUrl || null,
       })),
   });
 }
@@ -583,4 +667,4 @@ function validImageUrl(url) {
   return typeof url === 'string' && /^\/uploads\/[\w.-]+$/.test(url) ? url : null;
 }
 
-module.exports = { setupSocket, syncMuted, sessionForSocket, revokeSessions };
+module.exports = { setupSocket, syncMuted, syncProfile, sessionForSocket, revokeSessions };

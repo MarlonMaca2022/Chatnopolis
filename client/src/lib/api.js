@@ -31,6 +31,15 @@ export const api = {
   disable2fa: (password, code, socketId) =>
     request('/2fa/disable', { method: 'POST', body: { password, code }, headers: socketHeader(socketId) }),
   revokeSessions: () => request('/sessions/revoke', { method: 'POST' }),
+  // Mi perfil de una cuenta registrada (el invitado lo cambia por el socket)
+  getProfile: () => request('/profile'),
+  updateProfile: (gender) => request('/profile', { method: 'PATCH', body: { gender } }),
+  uploadAvatar: (file) => {
+    const form = new FormData();
+    form.append('photo', file);
+    return request('/profile/avatar', { method: 'POST', body: form });
+  },
+  removeAvatar: () => request('/profile/avatar', { method: 'DELETE' }),
   register: (payload) => request('/register', { method: 'POST', body: payload }),
   createRoom: (name) => request('/rooms', { method: 'POST', body: { name } }),
   deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),

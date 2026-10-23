@@ -10,7 +10,7 @@
 // próximo login (ver routes.js) y en la próxima reconexión (ver socket.js).
 // Acordate de actualizar también `LEGAL.actualizado` en client/src/lib/legal.js,
 // que es el texto que ve el usuario.
-const TERMS_VERSION = '2026-08-14';
+const TERMS_VERSION = '2026-10-22';
 
 const MIN_AGE = 18;
 

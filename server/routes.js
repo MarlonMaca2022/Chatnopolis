@@ -5,8 +5,8 @@ const bcrypt = require('bcryptjs');
 const QRCode = require('qrcode');
 const { users, rooms, guestBans } = require('./db');
 const { signToken, sessionAccount } = require('./auth');
-const { syncMuted, sessionForSocket, revokeSessions } = require('./socket');
-const { UPLOADS_DIR, uploadUrl, checkQuota, noteUploaded } = require('./uploads');
+const { syncMuted, syncProfile, sessionForSocket, revokeSessions } = require('./socket');
+const { UPLOADS_DIR, uploadUrl, checkQuota, noteUploaded, removeUploadFile } = require('./uploads');
 const {
   loginLimiter,
   registerLimiter,
@@ -424,6 +424,68 @@ router.post('/upload', requireChatSession, enforceQuota, (req, res) => {
     noteUploaded(req.chatUser.canon, req.file.size);
     res.json({ success: true, url: uploadUrl(req.file.filename) });
   });
+});
+
+// --- Mi perfil (cuentas registradas) ---
+// El invitado no pasa por acá: su nick y su género cambian por el socket
+// (profile:update), porque no tiene cuenta donde guardarlos.
+
+router.get('/profile', requireAuth, (req, res) => {
+  const user = currentUser(req, res);
+  if (!user) return;
+  res.json({ username: user.username, role: user.role, gender: user.gender, avatarUrl: user.avatar_url });
+});
+
+router.patch('/profile', requireAuth, (req, res) => {
+  const user = currentUser(req, res);
+  if (!user) return;
+  const { gender } = req.body || {};
+  if (!validGender(gender)) {
+    return res.status(400).json({ success: false, message: 'Elige si eres hombre, mujer u otro' });
+  }
+  users.setGender(user.username, gender);
+  syncProfile(req.app.get('io'), user.username, { gender });
+  res.json({ success: true, gender });
+});
+
+// Foto de perfil: mismo multer y mismas cuotas que las fotos de los privados (el
+// techo de disco las cubre a las dos). Un silenciado no puede cambiarla: es tan
+// visible como un mensaje en la sala.
+function requireAvatarAllowed(req, res, next) {
+  const user = currentUser(req, res);
+  if (!user) return;
+  if (user.is_muted) return res.status(403).json({ success: false, message: 'Estás silenciado.' });
+  req.account = user;
+  next();
+}
+
+router.post('/profile/avatar', requireAuth, requireAvatarAllowed, (req, res) => {
+  const verdict = checkQuota(req.account.username_canon);
+  if (!verdict.ok) return res.status(verdict.status).json({ success: false, message: verdict.message });
+  upload.single('photo')(req, res, (err) => {
+    if (err) {
+      const message =
+        err.code === 'LIMIT_FILE_SIZE' ? 'La imagen supera el límite de 5 MB' : err.message;
+      return res.status(400).json({ success: false, message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No se recibió ninguna imagen' });
+    }
+    noteUploaded(req.account.username_canon, req.file.size);
+    const url = uploadUrl(req.file.filename);
+    // La anterior deja de servir apenas se reemplaza: se borra ya, no en el barrido
+    removeUploadFile(users.setAvatar(req.account.username, url));
+    syncProfile(req.app.get('io'), req.account.username, { avatarUrl: url });
+    res.json({ success: true, avatarUrl: url });
+  });
+});
+
+router.delete('/profile/avatar', requireAuth, (req, res) => {
+  const user = currentUser(req, res);
+  if (!user) return;
+  removeUploadFile(users.setAvatar(user.username, null));
+  syncProfile(req.app.get('io'), user.username, { avatarUrl: null });
+  res.json({ success: true });
 });
 
 module.exports = router;

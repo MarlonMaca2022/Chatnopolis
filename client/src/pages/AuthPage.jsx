@@ -61,9 +61,21 @@ export default function AuthPage() {
   // La cuenta tiene verificación en dos pasos: mismo patrón, 200 sin token hasta
   // que se manda el código. Usuario y contraseña siguen en el formulario.
   const [needsCode, setNeedsCode] = useState(false);
+  // Nick y género del invitado que tocó "Crear una cuenta" en Mi perfil
+  const [prefill, setPrefill] = useState(null);
 
   useEffect(() => {
     api.getRooms().then(setRooms).catch(() => {});
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('register_prefill'));
+      if (saved) {
+        setPrefill(saved);
+        setTab('register');
+      }
+    } catch {
+      // un valor roto no impide entrar
+    }
+    sessionStorage.removeItem('register_prefill');
     // Mensaje de expulsión/ban guardado antes de redirigir
     const reason = sessionStorage.getItem('disconnect_reason');
     if (reason) {
@@ -273,9 +285,15 @@ export default function AuthPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-ink-soft mb-1">Usuario (Nick)</label>
-              <input name="username" required placeholder="jperez2024" className={smallInputClass} />
+              <input
+                name="username"
+                required
+                placeholder="jperez2024"
+                defaultValue={prefill?.username}
+                className={smallInputClass}
+              />
             </div>
-            <GenderPicker />
+            <GenderPicker defaultValue={prefill?.gender} />
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-ink-soft mb-1">Contraseña</label>

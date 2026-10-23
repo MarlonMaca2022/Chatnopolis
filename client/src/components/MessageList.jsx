@@ -17,7 +17,7 @@ function formatTime(iso) {
 
 // `selected`: en el celular no hay hover, así que las acciones aparecen al tocar la
 // burbuja. `picking`: el popover de emojis de este mensaje está abierto.
-function Message({ data, currentUsername, canDelete, selected, picking, onSelect, onPick, onReact, onReply, onDelete }) {
+function Message({ data, currentUsername, avatarUrl, canDelete, selected, picking, onSelect, onPick, onReact, onReply, onDelete }) {
   const isMe = data.username === currentUsername;
   const isAdminMsg = data.role === 'admin';
   const isPrivate = data.isPrivate;
@@ -64,7 +64,7 @@ function Message({ data, currentUsername, canDelete, selected, picking, onSelect
 
   return (
     <div className={`group flex gap-4 message-enter ${isMe ? 'flex-row-reverse' : ''}`}>
-      <Avatar name={data.username} className={`${avatarColor} shadow-sm`} />
+      <Avatar name={data.username} src={avatarUrl} className={`${avatarColor} shadow-sm`} />
       <div className={`flex flex-col gap-1 max-w-[75%] min-w-0 ${isMe ? 'items-end' : ''}`}>
         <div className={`flex items-baseline gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
           <span
@@ -216,7 +216,8 @@ function ActionButton({ title, danger, onClick, children }) {
 }
 
 // `canDelete`: el admin, y solo en salas (los privados no se moderan desde acá).
-export default function MessageList({ messages, currentUsername, canDelete, onReact, onReply, onDelete }) {
+// `avatars`: foto vigente de cada conectado (gana sobre la que trae el mensaje).
+export default function MessageList({ messages, currentUsername, avatars = {}, canDelete, onReact, onReply, onDelete }) {
   const bottomRef = useRef(null);
   const [selectedId, setSelectedId] = useState(null);
   const [pickerId, setPickerId] = useState(null);
@@ -242,6 +243,7 @@ export default function MessageList({ messages, currentUsername, canDelete, onRe
           key={m.id ?? `s${i}`}
           data={m}
           currentUsername={currentUsername}
+          avatarUrl={m.username in avatars ? avatars[m.username] : m.avatarUrl}
           canDelete={canDelete}
           selected={selectedId === m.id}
           picking={pickerId === m.id}
