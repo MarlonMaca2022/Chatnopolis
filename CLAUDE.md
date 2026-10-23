@@ -46,6 +46,7 @@ client/
                      Avatar (círculo con inicial), GenderPicker ("Soy": radios name="gender")
   src/lib/           api.js (fetch wrapper + uploadPhoto), session.js (token en localStorage),
                      gender.js (textos de cada género; los ids los decide server/profile.js),
+                     messages.js (REACTIONS + quoteLabel() para citas),
                      compressImage.js (redimensiona/reencoda antes de subir),
                      legal.js (texto de términos/privacidad/seguridad + responsable legal)
   vite.config.js     dev server + proxy
@@ -67,6 +68,11 @@ SQLite en `data/chat.db` (WAL). Tablas: `users`, `rooms`, `messages` (sala **o**
 
 El cliente **reemplaza** la lista local con cada `history` (`ChatPage.jsx`, `socket.on('history')`), así que cambiar de sala, recargar o reconectar reinicia lo que se ve a esos 500 — no se acumula entre sesiones.
 
+**Respuestas y reacciones.** Todo mensaje viaja con su `id` (en vivo y en los historiales), que es lo que usan las tres acciones de `MessageList`:
+- **Responder**: `messages.reply_to` (sin FK a propósito: si el original se borra, la respuesta queda con `replyTo: { id, deleted: true }` → "Mensaje eliminado"). El servidor manda la cita armada (`replyPreview()`, primeros 100 caracteres), resuelta en los historiales con un `LEFT JOIN` de `messages` sobre sí misma (`HISTORY_COLUMNS`).
+- **Reaccionar**: tabla `message_reactions` (una fila por canónica + emoji, toggle), set fijo de 6 (`REACTIONS` en `server/socket.js` y en `client/src/lib/messages.js`, hay que mantenerlos iguales). `ON DELETE CASCADE` + `PRAGMA foreign_keys = ON`: la poda, la retención de DM y el borrado del admin se llevan las reacciones solas. El cambio viaja como `reactions {id, reactions: {emoji: [nicks]}}` por `emitToAudience()` — que nunca llama a `io.to([])`, porque con la lista vacía Socket.IO le manda a **todos**.
+- **`quotable(socket, id)` es la única puerta** para citar y para reaccionar: la cita copia el texto del original, así que un id ajeno sería una forma de leer mensajes de otros. Sala: solo la sala en la que está. Privado: hay que ser parte, y las dos puntas tienen que poder verlo — `dmVisibleFrom()` deja a un invitado ver solo los privados de **su sesión actual** (`socket.user.sinceId`, el último id al momento del handshake), por el mismo motivo que `dm:history` no se le sirve. Al responder un privado, además, el citado tiene que ser de esa misma conversación (`samePair`).
+
 Las migraciones sobre bases ya creadas van con `ALTER TABLE` guardado por el helper `hasColumn()` (`PRAGMA table_info`), porque `CREATE TABLE IF NOT EXISTS` no toca tablas existentes.
 
 ## Identidad y nicks — IMPORTANTE
@@ -82,6 +88,7 @@ Un invitado no tiene cuenta: **su identidad es el nombre**. De ahí salen tres r
 
 - **Silenciar** — toggle sin vencimiento. Bloquea `chatMessage` y `privateMessage`. Persiste en `users.is_muted` para registrados; para invitados solo vive en la conexión. **`socket.user.isMuted` es la fuente de verdad de la sesión**: `join` reconstruye `usersOnline` a partir de él, así que todo cambio de silencio debe pasar por `syncMuted()` (`server/socket.js`) o se pierde al cambiar de sala. Las rutas REST también lo llaman para no desincronizar sesiones vivas. El estado viaja a toda la sala en `roomUsers` (`isMuted`), y `UserList` lo pinta en gris + alterna el label Silenciar/Desilenciar.
 - **Expulsar** — solo cierra el socket, no persiste nada: el usuario puede volver enseguida.
+- **Borrar un mensaje** — solo de salas (`admin:deleteMessage`, botón 🗑 de `MessageList` con `canDelete`). Lo borra de la base del todo (`messages.removeRoomMessage`, con sus reacciones por el CASCADE) y emite `messageDeleted {id}` a la sala; el cliente lo saca de `chats` y marca como eliminadas las citas que lo apuntaban. Los privados no: el admin no los ve.
 - **Banear** — duraciones 10 min / 1 h / 4 h / permanente (`BAN_DURATIONS` en `server/socket.js`, validadas server-side). Registrados: `users.is_banned` + `banned_until`. Invitados: fila en `guest_bans` con `expires_at`. En ambos, **`NULL` en la fecha = permanente**. Se banea la **identidad, no la IP** (el proyecto no captura IPs): el ban aguanta las variantes del mismo nombre porque va por canónica (ver *Identidad y nicks*), pero un invitado sigue evadiéndolo si elige un nick **realmente** distinto.
 - **Vencimiento perezoso**: no hay cron ni timers. `users.banStatus()` y `guestBans.status()` evalúan la fecha al leer y borran el registro vencido en el momento. Todo chequeo de ban debe pasar por esos helpers, nunca leer `is_banned` directo.
 - **Desbanear / desilenciar** viven en el `AdminModal` vía REST (`POST /api/users/:u/unban`, `/unmute`, `DELETE /api/guest-bans/:u`), no en la lista de usuarios en línea: un baneado no está conectado. Los invitados baneados tienen su propia sección porque no existen en la tabla `users`.

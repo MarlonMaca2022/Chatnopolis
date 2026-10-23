@@ -4,11 +4,20 @@ import EmojiPicker, { EmojiStyle, Theme } from 'emoji-picker-react';
 import { api } from '../lib/api';
 import { compressImage, formatBytes } from '../lib/compressImage';
 import { useTheme } from '../lib/theme';
+import { quoteLabel } from '../lib/messages';
 
 // `allowPhotos` es false en las salas: las fotos solo van por privado (el servidor
 // también lo rechaza, esto es solo para no ofrecer el botón).
 // `socketId` es lo que prueba ante el servidor que estamos en el chat al subir una foto.
-export default function MessageInput({ onSend, allowPhotos = false, socketId = null }) {
+// `replyingTo` es el mensaje que se está respondiendo (o null); el id lo agrega ChatPage
+// al enviar.
+export default function MessageInput({
+  onSend,
+  allowPhotos = false,
+  socketId = null,
+  replyingTo = null,
+  onCancelReply,
+}) {
   const [text, setText] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -38,6 +47,11 @@ export default function MessageInput({ onSend, allowPhotos = false, socketId = n
       setText((prev) => prev + emoji);
     }
   }
+
+  // Elegir "responder" deja el cursor listo para escribir
+  useEffect(() => {
+    if (replyingTo) inputRef.current?.focus();
+  }, [replyingTo]);
 
   // Al cambiar de privado a sala se descarta la foto en cola
   useEffect(() => {
@@ -104,6 +118,22 @@ export default function MessageInput({ onSend, allowPhotos = false, socketId = n
 
   return (
     <div className="p-4 bg-panel border-t border-edge shrink-0">
+      {replyingTo && (
+        <div className="max-w-4xl mx-auto mb-2 flex items-center gap-3 pl-3 pr-1 py-1.5 border-l-2 border-accent bg-muted rounded-r-lg">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-accent-ink">Respondiendo a {replyingTo.username}</p>
+            <p className="text-xs text-ink-faint truncate">{quoteLabel(replyingTo)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancelReply}
+            className="p-1.5 rounded-full text-ink-faint hover:text-ink hover:bg-surface transition shrink-0"
+            title="Cancelar respuesta"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
       {compressing && (
         <div className="max-w-4xl mx-auto mb-2 flex items-center gap-2 text-xs text-ink-faint">
           <Loader2 size={14} className="animate-spin" /> Comprimiendo foto…

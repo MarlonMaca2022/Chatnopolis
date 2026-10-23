@@ -12,6 +12,9 @@ const db = new DatabaseSync(path.join(DATA_DIR, 'chat.db'));
 
 db.exec(`
   PRAGMA journal_mode = WAL;
+  -- Por conexión, no se guarda en el archivo: sin esto SQLite ignora los
+  -- ON DELETE CASCADE de message_reactions.
+  PRAGMA foreign_keys = ON;
 
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,6 +52,16 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room, id);
   CREATE INDEX IF NOT EXISTS idx_messages_dm ON messages(sender, recipient, id);
+
+  -- Una fila por persona y emoji. Se van solas con el mensaje (poda, borrado del
+  -- admin), así que ningún camino que borre mensajes tiene que acordarse de ellas.
+  CREATE TABLE IF NOT EXISTS message_reactions (
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    username_canon TEXT NOT NULL,  -- identidad: un toggle por persona aunque cambie mayúsculas
+    username TEXT NOT NULL,        -- para mostrar quién reaccionó
+    emoji TEXT NOT NULL,
+    PRIMARY KEY (message_id, username_canon, emoji)
+  );
 
   CREATE TABLE IF NOT EXISTS guest_bans (
     username TEXT PRIMARY KEY,   -- el nick tal como se escribió, para mostrarlo en el panel
@@ -90,6 +103,9 @@ if (!hasColumn('users', 'totp_secret')) {
 if (!hasColumn('users', 'session_version')) {
   db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
 }
+// Respuestas: el id del mensaje citado. Sin FK a propósito: si el original se borra
+// (poda o admin), la respuesta queda y muestra "Mensaje eliminado".
+if (!hasColumn('messages', 'reply_to')) db.exec('ALTER TABLE messages ADD COLUMN reply_to INTEGER');
 // Género (server/profile.js). Las cuentas anteriores quedan en NULL: no se les
 // inventa uno, lo eligen ellas desde su perfil.
 if (!hasColumn('users', 'gender')) db.exec('ALTER TABLE users ADD COLUMN gender TEXT');
@@ -253,37 +269,90 @@ const PRUNE_SLACK = 50;
 // y no hay paginación en la UI, así que 500 es de sobra.
 const DM_PAIR_LIMIT = Number(process.env.DM_PAIR_LIMIT) || 500;
 
+// Columnas de los historiales: el mensaje (m) y, si es una respuesta, lo que hace
+// falta del citado (p) para mostrar la cita. reply_to con p.id NULL = el citado ya
+// no existe.
+const HISTORY_COLUMNS = `
+  m.id, m.sender, m.recipient, m.text, m.image_url AS imageUrl, m.image_expired AS imageExpired,
+  m.created_at AS createdAt, m.reply_to AS replyToId,
+  p.id AS replyFoundId, p.sender AS replySender, p.text AS replyText,
+  (p.image_url IS NOT NULL OR p.image_expired = 1) AS replyHasPhoto
+`;
+
 const messages = {
   ROOM_HISTORY_LIMIT,
   DM_PAIR_LIMIT,
 
-  saveRoom: (room, sender, text, imageUrl) =>
-    db.prepare('INSERT INTO messages (room, sender, text, image_url) VALUES (?, ?, ?, ?)')
-      .run(room, sender, text ?? null, imageUrl ?? null),
-  saveDM: (sender, recipient, text, imageUrl) =>
-    db.prepare('INSERT INTO messages (sender, recipient, text, image_url) VALUES (?, ?, ?, ?)')
-      .run(sender, recipient, text ?? null, imageUrl ?? null),
+  // Los dos devuelven el id del mensaje nuevo: viaja con él para poder reaccionar,
+  // responder o borrarlo.
+  saveRoom: (room, sender, text, imageUrl, replyTo = null) =>
+    Number(
+      db.prepare('INSERT INTO messages (room, sender, text, image_url, reply_to) VALUES (?, ?, ?, ?, ?)')
+        .run(room, sender, text ?? null, imageUrl ?? null, replyTo).lastInsertRowid
+    ),
+  saveDM: (sender, recipient, text, imageUrl, replyTo = null) =>
+    Number(
+      db.prepare('INSERT INTO messages (sender, recipient, text, image_url, reply_to) VALUES (?, ?, ?, ?, ?)')
+        .run(sender, recipient, text ?? null, imageUrl ?? null, replyTo).lastInsertRowid
+    ),
   // Por defecto mandamos todo lo que se guarda: lo que retiene la sala es lo que se ve
   roomHistory: (room, limit = ROOM_HISTORY_LIMIT) =>
     db.prepare(`
       SELECT * FROM (
-        SELECT sender, text, image_url AS imageUrl, image_expired AS imageExpired,
-               created_at AS createdAt, id
-        FROM messages WHERE room = ? ORDER BY id DESC LIMIT ?
+        SELECT ${HISTORY_COLUMNS}
+        FROM messages m LEFT JOIN messages p ON p.id = m.reply_to
+        WHERE m.room = ? ORDER BY m.id DESC LIMIT ?
       ) ORDER BY id ASC
     `).all(room, limit),
   dmHistory: (userA, userB, limit = 50) =>
     db.prepare(`
       SELECT * FROM (
-        SELECT sender, recipient, text, image_url AS imageUrl, image_expired AS imageExpired,
-               created_at AS createdAt, id
-        FROM messages
-        WHERE room IS NULL AND (
-          (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
+        SELECT ${HISTORY_COLUMNS}
+        FROM messages m LEFT JOIN messages p ON p.id = m.reply_to
+        WHERE m.room IS NULL AND (
+          (m.sender = ? AND m.recipient = ?) OR (m.sender = ? AND m.recipient = ?)
         )
-        ORDER BY id DESC LIMIT ?
+        ORDER BY m.id DESC LIMIT ?
       ) ORDER BY id ASC
     `).all(userA, userB, userB, userA, limit),
+
+  find: (id) => db.prepare('SELECT * FROM messages WHERE id = ?').get(id),
+  // El id más alto hasta ahora: marca desde dónde ve privados la sesión de un invitado
+  lastId: () => db.prepare('SELECT MAX(id) AS id FROM messages').get().id ?? 0,
+
+  // El admin borra un mensaje de sala. Devuelve la sala, o null si no existía o era
+  // un privado (los privados no se moderan así: el admin no los ve).
+  removeRoomMessage: (id) =>
+    db.prepare('DELETE FROM messages WHERE id = ? AND room IS NOT NULL RETURNING room').get(id)?.room ??
+    null,
+
+  // { [messageId]: { emoji: [usernames] } } para un lote de mensajes, en una consulta
+  reactionsFor: (ids) => {
+    const result = {};
+    if (ids.length === 0) return result;
+    const rows = db
+      .prepare(
+        `SELECT message_id, username, emoji FROM message_reactions
+         WHERE message_id IN (${ids.map(() => '?').join(',')}) ORDER BY rowid`
+      )
+      .all(...ids);
+    for (const { message_id, username, emoji } of rows) {
+      ((result[message_id] ||= {})[emoji] ||= []).push(username);
+    }
+    return result;
+  },
+  // Pone o saca la reacción y devuelve cómo quedaron las del mensaje
+  toggleReaction: (id, canon, username, emoji) => {
+    const removed = db
+      .prepare('DELETE FROM message_reactions WHERE message_id = ? AND username_canon = ? AND emoji = ?')
+      .run(id, canon, emoji).changes;
+    if (!removed) {
+      db.prepare(
+        'INSERT INTO message_reactions (message_id, username_canon, username, emoji) VALUES (?, ?, ?, ?)'
+      ).run(id, canon, username, emoji);
+    }
+    return messages.reactionsFor([id])[id] || {};
+  },
 
   // Deja como mucho `keep` mensajes en la sala. Devuelve las URLs de las fotos que
   // se fueron con los mensajes borrados para que el llamador elimine los archivos.

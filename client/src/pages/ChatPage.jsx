@@ -11,6 +11,7 @@ import AdminModal from '../components/AdminModal.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import LegalFooter from '../components/LegalFooter.jsx';
 import Avatar from '../components/Avatar.jsx';
+import { quoteLabel } from '../lib/messages';
 
 const BAN_LABELS = { 10: '10 minutos', 60: '1 hora', 240: '4 horas' };
 
@@ -18,6 +19,11 @@ const BAN_LABELS = { 10: '10 minutos', 60: '1 hora', 240: '4 horas' };
 // servidor (~20 s), que es lo que tarda en soltar nuestro socket anterior.
 const NICK_RETRY_MS = 3000;
 const NICK_MAX_RETRIES = 10;
+
+// Aplica `fn` a cada mensaje de cada conversación (y descarta los que no pasan `keep`)
+function mapMessages(chats, fn, keep = () => true) {
+  return Object.fromEntries(Object.entries(chats).map(([key, list]) => [key, list.filter(keep).map(fn)]));
+}
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -45,6 +51,11 @@ export default function ChatPage() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [showUsers, setShowUsers] = useState(false); // panel de usuarios en móvil
   const [showRoomPicker, setShowRoomPicker] = useState(false); // "Cambiar" sala (no admin)
+  const [replyingTo, setReplyingTo] = useState(null); // mensaje que se está respondiendo
+
+  // Una respuesta es de la conversación donde se eligió: al cambiar, se descarta.
+  // El servidor igual ignora citas de otra sala u otro privado.
+  useEffect(() => setReplyingTo(null), [activeView.type, activeView.target]);
 
   const username = session?.username;
 
@@ -150,6 +161,21 @@ export default function ChatPage() {
       setSocketId(null);
     });
 
+    // Los ids son únicos en toda la tabla (salas y privados), así que alcanza con
+    // buscarlo en cada conversación abierta.
+    socket.on('reactions', ({ id, reactions }) => {
+      setChats((prev) => mapMessages(prev, (m) => (m.id === id ? { ...m, reactions } : m)));
+    });
+
+    // El admin borró un mensaje de sala: sale de la lista, y las respuestas que lo
+    // citaban pasan a "Mensaje eliminado".
+    socket.on('messageDeleted', ({ id }) => {
+      setChats((prev) =>
+        mapMessages(prev, (m) => (m.replyTo?.id === id ? { ...m, replyTo: { id, deleted: true } } : m), (m) => m.id !== id)
+      );
+      setReplyingTo((current) => (current?.id === id ? null : current));
+    });
+
     socket.on('roomUsers', ({ users }) => setOnlineUsers(users));
 
     socket.on('roomsUpdate', (rooms) => {
@@ -217,11 +243,23 @@ export default function ChatPage() {
   function sendMessage({ text, imageUrl }) {
     const socket = socketRef.current;
     if (!socket) return;
+    const replyTo = replyingTo?.id;
     if (activeView.type === 'dm') {
-      socket.emit('privateMessage', { targetUsername: activeView.target, text, imageUrl });
+      socket.emit('privateMessage', { targetUsername: activeView.target, text, imageUrl, replyTo });
     } else {
-      socket.emit('chatMessage', { text, imageUrl });
+      socket.emit('chatMessage', { text, imageUrl, replyTo });
     }
+    setReplyingTo(null);
+  }
+
+  function react(id, emoji) {
+    socketRef.current?.emit('react', { id, emoji });
+  }
+
+  function deleteMessage(message) {
+    const preview = quoteLabel(message).slice(0, 60);
+    if (!window.confirm(`¿Borrar el mensaje de ${message.username}?\n\n"${preview}"`)) return;
+    socketRef.current?.emit('admin:deleteMessage', message.id);
   }
 
   // durationMinutes solo aplica a 'ban' (null = permanente)
@@ -440,13 +478,22 @@ export default function ChatPage() {
           </span>
         </div>
 
-        <MessageList messages={activeMessages} currentUsername={username} />
+        <MessageList
+          messages={activeMessages}
+          currentUsername={username}
+          canDelete={isAdmin && activeView.type === 'room'}
+          onReact={react}
+          onReply={setReplyingTo}
+          onDelete={deleteMessage}
+        />
 
         {/* Las fotos solo se permiten en privado (server/socket.js lo reimpone) */}
         <MessageInput
           onSend={sendMessage}
           allowPhotos={activeView.type === 'dm'}
           socketId={socketId}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
         />
       </main>
 
