@@ -109,6 +109,9 @@ if (!hasColumn('messages', 'reply_to')) db.exec('ALTER TABLE messages ADD COLUMN
 // Género (server/profile.js). Las cuentas anteriores quedan en NULL: no se les
 // inventa uno, lo eligen ellas desde su perfil.
 if (!hasColumn('users', 'gender')) db.exec('ALTER TABLE users ADD COLUMN gender TEXT');
+// Foto de perfil: una URL /uploads/... como las de los mensajes, pero sin TTL. El
+// barrido de huérfanos la cuenta como referenciada (users.avatarUrls).
+if (!hasColumn('users', 'avatar_url')) db.exec('ALTER TABLE users ADD COLUMN avatar_url TEXT');
 
 // Columnas canónicas: se agregan vacías y se rellenan desde el nombre ya guardado.
 function backfillCanon(table, key) {
@@ -240,6 +243,18 @@ const users = {
     return { banned: true, until: row.banned_until || null };
   },
 
+  // --- Perfil ---
+  setGender: (username, gender) =>
+    db.prepare('UPDATE users SET gender = ? WHERE username = ?').run(gender, username),
+  // Devuelve la URL anterior para que quien llama borre ese archivo
+  setAvatar: (username, url) => {
+    const previous = db.prepare('SELECT avatar_url FROM users WHERE username = ?').get(username)?.avatar_url;
+    db.prepare('UPDATE users SET avatar_url = ? WHERE username = ?').run(url, username);
+    return previous || null;
+  },
+  avatarUrls: () =>
+    db.prepare('SELECT avatar_url FROM users WHERE avatar_url IS NOT NULL').all().map((r) => r.avatar_url),
+
   // Invalida todos los tokens firmados hasta ahora. Devuelve la versión nueva, que es
   // la que tiene que llevar cualquier token que se firme después.
   bumpSessionVersion: (username) =>
@@ -269,14 +284,19 @@ const PRUNE_SLACK = 50;
 // y no hay paginación en la UI, así que 500 es de sobra.
 const DM_PAIR_LIMIT = Number(process.env.DM_PAIR_LIMIT) || 500;
 
-// Columnas de los historiales: el mensaje (m) y, si es una respuesta, lo que hace
-// falta del citado (p) para mostrar la cita. reply_to con p.id NULL = el citado ya
-// no existe.
+// Columnas de los historiales: el mensaje (m), la foto de perfil actual de quien lo
+// mandó (u; los invitados no tienen fila) y, si es una respuesta, lo que hace falta
+// del citado (p) para mostrar la cita. reply_to con p.id NULL = el citado ya no existe.
 const HISTORY_COLUMNS = `
   m.id, m.sender, m.recipient, m.text, m.image_url AS imageUrl, m.image_expired AS imageExpired,
-  m.created_at AS createdAt, m.reply_to AS replyToId,
+  m.created_at AS createdAt, m.reply_to AS replyToId, u.avatar_url AS avatarUrl,
   p.id AS replyFoundId, p.sender AS replySender, p.text AS replyText,
   (p.image_url IS NOT NULL OR p.image_expired = 1) AS replyHasPhoto
+`;
+const HISTORY_JOINS = `
+  FROM messages m
+  LEFT JOIN users u ON u.username = m.sender
+  LEFT JOIN messages p ON p.id = m.reply_to
 `;
 
 const messages = {
@@ -300,7 +320,7 @@ const messages = {
     db.prepare(`
       SELECT * FROM (
         SELECT ${HISTORY_COLUMNS}
-        FROM messages m LEFT JOIN messages p ON p.id = m.reply_to
+        ${HISTORY_JOINS}
         WHERE m.room = ? ORDER BY m.id DESC LIMIT ?
       ) ORDER BY id ASC
     `).all(room, limit),
@@ -308,7 +328,7 @@ const messages = {
     db.prepare(`
       SELECT * FROM (
         SELECT ${HISTORY_COLUMNS}
-        FROM messages m LEFT JOIN messages p ON p.id = m.reply_to
+        ${HISTORY_JOINS}
         WHERE m.room IS NULL AND (
           (m.sender = ? AND m.recipient = ?) OR (m.sender = ? AND m.recipient = ?)
         )

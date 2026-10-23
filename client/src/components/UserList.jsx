@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Ban, MessageSquare, MoreVertical, Shield, Volume2, VolumeX, LogOut, X } from 'lucide-react';
+import { Ban, ImageOff, MessageSquare, MoreVertical, Shield, Volume2, VolumeX, LogOut, X } from 'lucide-react';
 import Avatar from './Avatar.jsx';
 import { GENDERS, genderLabel } from '../lib/gender';
 
@@ -89,6 +89,7 @@ export default function UserList({ users, currentUsername, isAdmin, onOpenDM, on
                   <div className="relative shrink-0">
                     <Avatar
                       name={user.username}
+                      src={user.avatarUrl}
                       size="w-9 h-9 text-sm"
                       className={
                         isUserAdmin
@@ -181,6 +182,17 @@ export default function UserList({ users, currentUsername, isAdmin, onOpenDM, on
                             >
                               <LogOut size={14} /> Expulsar
                             </button>
+                            {user.avatarUrl && (
+                              <button
+                                onClick={() => {
+                                  onAdminAction('removeAvatar', user.username);
+                                  setOpenMenu(null);
+                                }}
+                                className="text-left px-4 py-2 text-sm text-ink-soft hover:bg-muted hover:text-orange-600 dark:hover:text-orange-400 flex items-center gap-2"
+                              >
+                                <ImageOff size={14} /> Quitar foto
+                              </button>
+                            )}
 
                             <div className="px-4 pt-2 pb-1 text-xs font-semibold text-red-500 dark:text-red-400 uppercase tracking-wider flex items-center gap-2 border-t border-edge mt-1">
                               <Ban size={12} /> Banear
