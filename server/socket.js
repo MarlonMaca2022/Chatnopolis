@@ -25,6 +25,13 @@ const guestNicks = new Map();
 // Duraciones de ban aceptadas, en minutos. Cualquier otro valor => permanente.
 const BAN_DURATIONS = [10, 60, 240];
 
+// Emojis con los que se puede reaccionar. Un set fijo: con texto libre cualquiera
+// podría "reaccionar" con un párrafo.
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+// Cuánto del texto citado viaja con una respuesta
+const REPLY_PREVIEW_LENGTH = 100;
+
 // El mismo tope que el regex de nicks del handshake y que /register. Lo usamos
 // para descartar destinatarios de privados que no pueden ser nadie.
 const MAX_NICK_LENGTH = 20;
@@ -99,7 +106,9 @@ function setupSocket(io) {
       return next(nickInUseError());
     }
     guestNicks.set(canon, socket.id);
-    socket.user = { username: nick, canon, role: 'guest', isMuted: false, gender };
+    // sinceId: los privados anteriores a esta sesión no son de esta persona aunque
+    // tengan su nick (ver dmVisibleFrom).
+    socket.user = { username: nick, canon, role: 'guest', isMuted: false, gender, sinceId: messages.lastId() };
     next();
   });
 
@@ -134,13 +143,7 @@ function setupSocket(io) {
       // Historial persistido de la sala
       socket.emit('history', {
         room: roomId,
-        messages: messages.roomHistory(roomId).map((m) => ({
-          username: m.sender,
-          text: m.text,
-          imageUrl: m.imageUrl,
-          imageExpired: !!m.imageExpired,
-          createdAt: m.createdAt,
-        })),
+        messages: historyPayload(messages.roomHistory(roomId)),
       });
 
       socket.to(roomId).emit('message', system(`${me.username} se ha unido.`));
@@ -148,7 +151,7 @@ function setupSocket(io) {
       updateRoomUsers(io, roomId);
     });
 
-    socket.on('chatMessage', ({ text, imageUrl } = {}) => {
+    socket.on('chatMessage', ({ text, imageUrl, replyTo } = {}) => {
       const user = usersOnline[socket.id];
       if (!user) return;
       if (user.isMuted) {
@@ -170,18 +173,22 @@ function setupSocket(io) {
       }
       if (!cleanText) return;
 
-      messages.saveRoom(user.room, user.username, cleanText, null);
+      const quoted = quotable(socket, replyTo);
+      const id = messages.saveRoom(user.room, user.username, cleanText, null, quoted?.id);
       pruneRoom(user.room);
       io.to(user.room).emit('message', {
+        id,
         username: user.username,
         role: user.role,
         text: cleanText,
         imageUrl: null,
+        replyTo: quoted ? replyPreview(quoted) : null,
+        reactions: {},
         createdAt: new Date().toISOString(),
       });
     });
 
-    socket.on('privateMessage', ({ targetUsername, text, imageUrl } = {}) => {
+    socket.on('privateMessage', ({ targetUsername, text, imageUrl, replyTo } = {}) => {
       const user = usersOnline[socket.id];
       if (!user) return;
       if (user.isMuted) {
@@ -211,17 +218,23 @@ function setupSocket(io) {
       // Guardamos el nombre tal como está en la cuenta, no como lo escribió el
       // cliente: si no, el historial se partiría entre "Maria" y "maria".
       const to = account?.username || target;
+      // Además de verse, el citado tiene que ser de ESTA conversación: si no, se
+      // podría citar un privado ajeno en una charla con otra persona.
+      let quoted = quotable(socket, replyTo);
+      if (quoted && !samePair(quoted, user.username, to)) quoted = null;
+      const id = messages.saveDM(user.username, to, cleanText || null, cleanImage, quoted?.id);
       const data = {
+        id,
         username: user.username,
         text: cleanText,
         imageUrl: cleanImage,
         isPrivate: true,
         from: user.username,
         to,
+        replyTo: quoted ? replyPreview(quoted) : null,
+        reactions: {},
         createdAt: new Date().toISOString(),
       };
-
-      messages.saveDM(user.username, to, cleanText || null, cleanImage);
 
       targetSocketIds.forEach((id) => io.to(id).emit('message', data));
       socket.emit('message', data);
@@ -246,17 +259,24 @@ function setupSocket(io) {
       // mandó el cliente: es con la que tiene abierta la conversación.
       socket.emit('dm:history', {
         withUser,
-        messages: messages.dmHistory(user.username, other.username).map((m) => ({
-          username: m.sender,
-          text: m.text,
-          imageUrl: m.imageUrl,
-          imageExpired: !!m.imageExpired,
+        messages: historyPayload(messages.dmHistory(user.username, other.username), (m) => ({
           isPrivate: true,
           from: m.sender,
           to: m.recipient,
-          createdAt: m.createdAt,
         })),
       });
+    });
+
+    // Reacción: toggle de un emoji del set fijo sobre un mensaje que esta persona ve.
+    socket.on('react', ({ id, emoji } = {}) => {
+      const user = usersOnline[socket.id];
+      if (!user || !REACTIONS.includes(emoji)) return;
+      if (user.isMuted) return;
+      if (!canSend(socket)) return;
+      const row = quotable(socket, id);
+      if (!row) return;
+      const reactions = messages.toggleReaction(row.id, user.canon, user.username, emoji);
+      emitToAudience(io, row, 'reactions', { id: row.id, reactions });
     });
 
     // --- Acciones de administración (rol verificado server-side) ---
@@ -286,6 +306,14 @@ function setupSocket(io) {
       }
 
       disconnectUser(io, targetUsername, banMessage(until));
+    });
+
+    // Borra un mensaje de sala del todo: de la base (con sus reacciones, por el
+    // CASCADE) y de la pantalla de todos los que están en esa sala.
+    socket.on('admin:deleteMessage', (id) => {
+      if (!isAdmin(socket) || !Number.isInteger(id)) return;
+      const room = messages.removeRoomMessage(id);
+      if (room) io.to(room).emit('messageDeleted', { id });
     });
 
     socket.on('admin:mute', (targetUsername) => {
@@ -339,6 +367,84 @@ function canSend(socket) {
     socket.emit('message', system('Vas demasiado rápido. Esperá unos segundos.', 'system-error'));
   }
   return false;
+}
+
+// --- Mensajes: respuestas y reacciones ---
+
+// Desde qué id puede ver privados una identidad. Una cuenta registrada ve todo su
+// historial; un invitado, solo lo de su sesión actual: su nick lo puede reclamar
+// otra persona cuando se va, y citar o reaccionar a un privado anterior le
+// mostraría a la nueva lo que se habló con la anterior (mismo motivo que corta
+// dm:history para invitados). Un invitado desconectado no ve nada.
+function dmVisibleFrom(username) {
+  if (users.findByNick(username)) return 0;
+  const online = socketIdsFor(username)[0];
+  return online ? usersOnline[online].sinceId ?? Infinity : Infinity;
+}
+
+// El mensaje `id` si quien pregunta lo puede ver, o null: uno de la sala en la que
+// está, o un privado del que es parte y que las dos puntas pueden ver. Es la puerta
+// de entrada de citar y de reaccionar: la cita copia el texto del original, así
+// que pasar un id ajeno sería una forma de leer mensajes de otros.
+function quotable(socket, id) {
+  const me = usersOnline[socket.id];
+  if (!me || !Number.isInteger(id)) return null;
+  const row = messages.find(id);
+  if (!row) return null;
+  if (row.room) return row.room === me.room ? row : null;
+  const parties = [row.sender, row.recipient];
+  if (!parties.some((name) => canonicalNick(name) === me.canon)) return null;
+  return parties.every((name) => row.id > dmVisibleFrom(name)) ? row : null;
+}
+
+const samePair = (row, a, b) =>
+  [row.sender, row.recipient].map(canonicalNick).sort().join('\n') ===
+  [a, b].map(canonicalNick).sort().join('\n');
+
+// Avisa de un cambio en un mensaje a quien lo ve: la sala, o las dos puntas del
+// privado. Ojo: io.to([]) con la lista vacía le manda a TODOS, de ahí el chequeo.
+function emitToAudience(io, row, event, data) {
+  if (row.room) return io.to(row.room).emit(event, data);
+  const ids = [...socketIdsFor(row.sender), ...socketIdsFor(row.recipient)];
+  if (ids.length > 0) io.to(ids).emit(event, data);
+}
+
+// Lo que se muestra de un mensaje citado. Solo el comienzo del texto: es una
+// referencia, no una copia.
+function replyPreview(row) {
+  return {
+    id: row.id,
+    username: row.sender,
+    text: (row.text || '').slice(0, REPLY_PREVIEW_LENGTH),
+    photo: !!(row.image_url || row.image_expired),
+  };
+}
+
+// Filas de roomHistory/dmHistory -> mensajes para el cliente, con su cita y sus
+// reacciones. `extra` agrega lo propio de cada historial (los campos del privado).
+function historyPayload(rows, extra = () => ({})) {
+  const reactions = messages.reactionsFor(rows.map((m) => m.id));
+  return rows.map((m) => ({
+    id: m.id,
+    username: m.sender,
+    text: m.text,
+    imageUrl: m.imageUrl,
+    imageExpired: !!m.imageExpired,
+    createdAt: m.createdAt,
+    replyTo:
+      m.replyToId == null
+        ? null
+        : m.replyFoundId == null
+          ? { id: m.replyToId, deleted: true }
+          : {
+              id: m.replyToId,
+              username: m.replySender,
+              text: (m.replyText || '').slice(0, REPLY_PREVIEW_LENGTH),
+              photo: !!m.replyHasPhoto,
+            },
+    reactions: reactions[m.id] || {},
+    ...extra(m),
+  }));
 }
 
 // El `data` de un error de handshake llega al cliente como err.data

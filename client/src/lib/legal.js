@@ -114,7 +114,8 @@ export const LEGAL_PAGES = {
         heading: 'Moderación y sanciones',
         paragraphs: [
           'Moderamos de forma activa, pero no leemos todo lo que pasa: revisamos lo que se nos reporta y lo que detectamos. Que algo no se haya sancionado no significa que esté permitido.',
-          'Las sanciones disponibles son tres, y se aplican según la gravedad y la reincidencia:',
+          'Un moderador puede borrar cualquier mensaje de una sala: desaparece para todos y deja de estar guardado. Si alguien lo había respondido, la respuesta queda con la cita "Mensaje eliminado".',
+          'Las sanciones a una persona son tres, y se aplican según la gravedad y la reincidencia:',
         ],
         items: [
           {
@@ -211,7 +212,7 @@ export const LEGAL_PAGES = {
           },
           {
             title: 'Mensajes',
-            text: 'Los mensajes de sala y los privados se guardan en la base de datos del servidor, con el nick de quien los envió, el destinatario si es privado y la fecha.',
+            text: 'Los mensajes de sala y los privados se guardan en la base de datos del servidor, con el nick de quien los envió, el destinatario si es privado, la fecha y, si es una respuesta, a qué mensaje responde. También guardamos las reacciones con emojis y el nick de quien reaccionó; se borran junto con el mensaje.',
           },
           {
             title: 'Fotos',
