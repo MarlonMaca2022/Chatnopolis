@@ -648,10 +648,13 @@ function sessionForSocket(socketId) {
 }
 
 function updateRoomUsers(io, room) {
+  // Una entrada por identidad: una cuenta abierta en el celular y en la compu son
+  // dos sockets en la sala, pero es una sola persona (y el cliente usa el nick como key).
+  const seen = new Set();
   io.to(room).emit('roomUsers', {
     room,
     users: Object.values(usersOnline)
-      .filter((u) => u.room === room)
+      .filter((u) => u.room === room && !seen.has(u.canon) && seen.add(u.canon))
       .map(({ username, role, isMuted, gender, avatarUrl }) => ({
         username,
         role,

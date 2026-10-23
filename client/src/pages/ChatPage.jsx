@@ -561,6 +561,10 @@ export default function ChatPage() {
         isAdmin={isAdmin}
         onOpenDM={openDM}
         onAdminAction={adminAction}
+        onEditProfile={() => {
+          setShowUsers(false);
+          setShowProfile(true);
+        }}
         open={showUsers}
         onClose={() => setShowUsers(false)}
       />

@@ -147,7 +147,7 @@ export const LEGAL_PAGES = {
           'Las fotos se envían únicamente por mensaje privado, pesan como máximo 5 MB y deben ser imágenes (jpg, png, gif o webp).',
           'Las fotos se borran automáticamente de nuestro servidor 24 horas después de subirse. El mensaje sobrevive, pero la imagen desaparece y en su lugar aparece "Foto vencida".',
           'Ese borrado protege el almacenamiento, no tu privacidad: quien recibió la foto pudo haberle sacado una captura o haberla descargado durante esas horas. Una vez que envías una imagen, pierdes el control sobre ella.',
-          'La foto de perfil es distinta: solo pueden ponerla las cuentas registradas, no vence a las 24 horas y la ve todo el que esté en la sala. Por eso no puede tener desnudos, contenido sexual, menores ni fotos de otras personas. Un moderador puede quitarla en cualquier momento.',
+          'La foto de perfil es distinta: solo pueden ponerla las cuentas registradas, pesa como máximo 1 MB, no vence a las 24 horas y la ve todo el que esté en la sala. Por eso no puede tener desnudos, contenido sexual, menores ni fotos de otras personas. Un moderador puede quitarla en cualquier momento.',
         ],
       },
       {

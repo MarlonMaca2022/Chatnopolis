@@ -12,7 +12,7 @@ export default function GenderPicker({ defaultValue }) {
         {GENDERS.map((g) => (
           <label
             key={g.id}
-            className="cursor-pointer text-center px-3 py-2.5 rounded-lg border border-edge bg-muted text-ink-soft text-sm font-medium transition hover:bg-surface has-[:checked]:bg-accent-soft has-[:checked]:text-accent-ink has-[:checked]:border-accent/60 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent"
+            className={`cursor-pointer text-center px-3 py-2.5 rounded-lg border border-edge bg-muted text-ink-soft text-sm font-medium transition hover:bg-surface has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent ${g.picked}`}
           >
             <input
               type="radio"
