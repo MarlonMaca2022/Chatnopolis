@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Ban, ImageOff, MessageSquare, MoreVertical, Shield, Volume2, VolumeX, LogOut, X } from 'lucide-react';
 import Avatar from './Avatar.jsx';
-import { GENDERS, genderLabel } from '../lib/gender';
+import { GENDERS, genderInfo } from '../lib/gender';
 
 // Duraciones aceptadas por el servidor (BAN_DURATIONS en server/socket.js).
 // minutes null = permanente.
@@ -17,7 +17,7 @@ const BAN_OPTIONS = [
 const FILTERS = [{ id: 'todos', plural: 'Todos' }, ...GENDERS];
 
 // `open` / `onClose` solo aplican al drawer móvil; en desktop la lista es fija.
-export default function UserList({ users, currentUsername, isAdmin, onOpenDM, onAdminAction, open, onClose }) {
+export default function UserList({ users, currentUsername, isAdmin, onOpenDM, onAdminAction, onEditProfile, open, onClose }) {
   const [openMenu, setOpenMenu] = useState(null);
   // Uno solo para la columna y el drawer: los dos renderizan el mismo `content`
   const [filter, setFilter] = useState('todos');
@@ -28,12 +28,11 @@ export default function UserList({ users, currentUsername, isAdmin, onOpenDM, on
     return () => document.removeEventListener('click', close);
   }, []);
 
-  const countFor = (id) => (id === 'todos' ? users.length : users.filter((u) => u.gender === id).length);
   const visibleUsers = filter === 'todos' ? users : users.filter((u) => u.gender === filter);
 
   const content = (
     <>
-      <div className="px-5 pt-5 pb-4 border-b border-edge space-y-3">
+      <div className="px-4 pt-5 pb-4 border-b border-edge space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-xs font-semibold text-ink-faint uppercase tracking-wider flex items-center gap-2">
             En línea
@@ -50,7 +49,9 @@ export default function UserList({ users, currentUsername, isAdmin, onOpenDM, on
             <X size={18} />
           </button>
         </div>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por género">
+        {/* Una sola fila. La columna mide 256 px: entran justo, así que cada píldora
+            ocupa lo que pide su texto y el sobrante se reparte (flex-1) */}
+        <div className="flex gap-1" role="group" aria-label="Filtrar por género">
           {FILTERS.map((f) => {
             const active = filter === f.id;
             return (
@@ -58,14 +59,13 @@ export default function UserList({ users, currentUsername, isAdmin, onOpenDM, on
                 key={f.id}
                 onClick={() => setFilter(f.id)}
                 aria-pressed={active}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition ${
+                className={`flex-auto whitespace-nowrap px-1.5 py-0.5 rounded-full text-[11px] font-medium border transition ${
                   active
                     ? 'bg-accent text-white border-accent'
                     : 'bg-surface text-ink-soft border-edge hover:bg-muted'
                 }`}
               >
                 {f.plural}
-                <span className={`ml-1 ${active ? 'opacity-80' : 'text-ink-faint'}`}>{countFor(f.id)}</span>
               </button>
             );
           })}
@@ -79,7 +79,7 @@ export default function UserList({ users, currentUsername, isAdmin, onOpenDM, on
           {visibleUsers.map((user) => {
             const isUserAdmin = user.role === 'admin';
             const isMe = user.username === currentUsername;
-            const gender = genderLabel(user.gender);
+            const gender = genderInfo(user.gender);
             return (
               <li
                 key={user.username}
@@ -104,28 +104,36 @@ export default function UserList({ users, currentUsername, isAdmin, onOpenDM, on
                       }`}
                     />
                   </div>
-                  <div className="min-w-0">
-                    <span
-                      className={`font-medium flex items-center gap-1 ${
-                        user.isMuted ? 'text-ink-faint italic' : 'text-ink'
-                      }`}
-                      title={user.isMuted ? 'Silenciado' : undefined}
-                    >
-                      <span className="truncate">{user.username}</span>
-                      {isUserAdmin && <Shield size={12} className="text-amber-500 shrink-0" />}
-                      {user.isMuted && <VolumeX size={12} className="text-ink-faint shrink-0" />}
-                      {isMe && (
-                        <span className="px-1.5 rounded-full bg-accent-soft text-accent-ink text-[10px] font-bold uppercase shrink-0">
-                          Tú
-                        </span>
-                      )}
-                    </span>
+                  <span
+                    className={`min-w-0 font-medium flex items-center gap-1.5 ${
+                      user.isMuted ? 'text-ink-faint italic' : 'text-ink'
+                    }`}
+                    title={user.isMuted ? 'Silenciado' : undefined}
+                  >
+                    <span className="truncate">{user.username}</span>
+                    {isUserAdmin && <Shield size={12} className="text-amber-500 shrink-0" />}
+                    {user.isMuted && <VolumeX size={12} className="text-ink-faint shrink-0" />}
                     {gender && (
-                      <span className="inline-block mt-0.5 px-1.5 py-px rounded-md bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300 text-[11px] font-medium">
-                        {gender}
+                      <span className={`px-1.5 py-px rounded-md text-[11px] font-medium not-italic shrink-0 ${gender.tag}`}>
+                        {gender.label}
                       </span>
                     )}
-                  </div>
+                    {/* Cuentas anteriores al género: se le avisa solo a la persona,
+                        con un atajo a Mi perfil. A los demás no se les muestra nada. */}
+                    {!gender && isMe && (
+                      <button
+                        onClick={onEditProfile}
+                        className="px-1.5 py-px rounded-md text-[11px] font-medium border border-dashed border-edge text-ink-faint hover:text-accent hover:border-accent transition shrink-0"
+                      >
+                        + Género
+                      </button>
+                    )}
+                    {isMe && (
+                      <span className="px-1.5 rounded-full bg-accent-soft text-accent-ink text-[10px] font-bold uppercase shrink-0">
+                        Tú
+                      </span>
+                    )}
+                  </span>
                 </div>
 
                 {!isMe && (

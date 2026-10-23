@@ -364,22 +364,32 @@ const ALLOWED_TYPES = {
   'image/webp': '.webp',
 };
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOADS_DIR,
-    filename: (req, file, cb) => {
-      const ext = ALLOWED_TYPES[file.mimetype];
-      cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
+// Mismo destino, nombres y tipos para las dos clases de foto; cambia el tope.
+const photoUploader = (maxMb) =>
+  multer({
+    storage: multer.diskStorage({
+      destination: UPLOADS_DIR,
+      filename: (req, file, cb) => {
+        const ext = ALLOWED_TYPES[file.mimetype];
+        cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
+      },
+    }),
+    limits: { fileSize: maxMb * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (!ALLOWED_TYPES[file.mimetype]) {
+        return cb(new Error('Solo se permiten imágenes (jpg, png, gif, webp)'));
+      }
+      cb(null, true);
     },
-  }),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
-  fileFilter: (req, file, cb) => {
-    if (!ALLOWED_TYPES[file.mimetype]) {
-      return cb(new Error('Solo se permiten imágenes (jpg, png, gif, webp)'));
-    }
-    cb(null, true);
-  },
-});
+  });
+
+const upload = photoUploader(5);
+// La foto de perfil se descarga para cada persona de la sala, en cada mensaje: 1 MB.
+// El cliente ya la reduce a 512 px (unos 20-80 KB), así que el tope en la práctica
+// frena los GIF pesados, que se suben tal cual para no perder la animación.
+// Tiene que coincidir con AVATAR_LIMIT_MB de ProfileModal.jsx, que avisa antes de subir.
+const AVATAR_LIMIT_MB = 1;
+const avatarUpload = photoUploader(AVATAR_LIMIT_MB);
 
 // Quien sube tiene que estar conectado al chat. Los invitados no tienen cuenta ni
 // token, así que su credencial es la sesión viva: el cliente manda su socket id y
@@ -448,8 +458,8 @@ router.patch('/profile', requireAuth, (req, res) => {
   res.json({ success: true, gender });
 });
 
-// Foto de perfil: mismo multer y mismas cuotas que las fotos de los privados (el
-// techo de disco las cubre a las dos). Un silenciado no puede cambiarla: es tan
+// Foto de perfil: mismas cuotas que las fotos de los privados (el techo de disco las
+// cubre a las dos) pero tope propio de 1 MB (avatarUpload). Un silenciado no puede cambiarla: es tan
 // visible como un mensaje en la sala.
 function requireAvatarAllowed(req, res, next) {
   const user = currentUser(req, res);
@@ -462,10 +472,12 @@ function requireAvatarAllowed(req, res, next) {
 router.post('/profile/avatar', requireAuth, requireAvatarAllowed, (req, res) => {
   const verdict = checkQuota(req.account.username_canon);
   if (!verdict.ok) return res.status(verdict.status).json({ success: false, message: verdict.message });
-  upload.single('photo')(req, res, (err) => {
+  avatarUpload.single('photo')(req, res, (err) => {
     if (err) {
       const message =
-        err.code === 'LIMIT_FILE_SIZE' ? 'La imagen supera el límite de 5 MB' : err.message;
+        err.code === 'LIMIT_FILE_SIZE'
+          ? `La foto de perfil puede pesar hasta ${AVATAR_LIMIT_MB} MB`
+          : err.message;
       return res.status(400).json({ success: false, message });
     }
     if (!req.file) {

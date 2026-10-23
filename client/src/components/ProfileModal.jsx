@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Camera, Loader2, UserPlus, X } from 'lucide-react';
 import { api } from '../lib/api';
-import { compressImage } from '../lib/compressImage';
+import { compressImage, formatBytes } from '../lib/compressImage';
 import Avatar from './Avatar.jsx';
 import GenderPicker from './GenderPicker.jsx';
 
@@ -9,6 +9,10 @@ const inputClass =
   'w-full px-3 py-2.5 rounded-lg border border-edge bg-muted text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-accent';
 
 const ROLE_LABELS = { guest: 'Invitado', user: 'Cuenta registrada', admin: 'Administrador' };
+
+// Tiene que coincidir con AVATAR_LIMIT_MB de server/routes.js, que es quien decide.
+// Acá solo sirve para avisar antes de subir.
+const AVATAR_LIMIT_MB = 1;
 
 // Mi perfil. `me` es la entrada propia de roomUsers ({ username, role, gender,
 // avatarUrl }): como el servidor la reenvía con cada cambio, lo que se guarda acá
@@ -52,6 +56,13 @@ export default function ProfileModal({ me, onClose, onGuestSave, onCreateAccount
     try {
       // Se muestra chica: 512 px alcanzan de sobra y pesa una fracción
       const file = await compressImage(picked, { maxDimension: 512 }).catch(() => picked);
+      // Una foto común queda muy por debajo; lo que llega acá es casi siempre un GIF,
+      // que no se comprime para no perder la animación.
+      if (file.size > AVATAR_LIMIT_MB * 1024 * 1024) {
+        throw new Error(
+          `La foto de perfil puede pesar hasta ${AVATAR_LIMIT_MB} MB y esta pesa ${formatBytes(file.size)}. Prueba con otra o con un GIF más corto.`
+        );
+      }
       await api.uploadAvatar(file);
     } catch (err) {
       setError(err.message);
@@ -130,9 +141,10 @@ export default function ProfileModal({ me, onClose, onGuestSave, onCreateAccount
             )}
           </div>
           {!isGuest && (
-            <p className="text-xs text-ink-faint -mt-2">
-              Se ve en las salas públicas: nada de desnudos ni contenido sexual.
-            </p>
+            <div className="text-xs text-ink-faint -mt-2 space-y-0.5">
+              <p>JPG, PNG, WebP o GIF · hasta {AVATAR_LIMIT_MB} MB · se reduce a 512 px.</p>
+              <p>Se ve en las salas públicas: nada de desnudos ni contenido sexual.</p>
+            </div>
           )}
 
           <div>
