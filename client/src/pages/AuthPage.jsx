@@ -7,6 +7,7 @@ import { LEGAL } from '../lib/legal';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import LegalFooter from '../components/LegalFooter.jsx';
 import GenderPicker from '../components/GenderPicker.jsx';
+import Logo from '../components/Logo.jsx';
 
 const inputClass =
   'w-full px-4 py-3 rounded-lg border border-edge bg-muted text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-accent hover:bg-surface transition-colors';
@@ -174,7 +175,10 @@ export default function AuthPage() {
       <div className="w-full max-w-lg p-8 bg-panel rounded-2xl shadow-xl border border-edge my-8">
         <div className="relative text-center mb-6">
           <ThemeToggle className="absolute right-0 top-0" />
-          <h1 className="text-3xl font-bold text-accent-ink mb-2">Chatnopolis</h1>
+          <h1 className="text-accent-ink mb-3 pt-2">
+            <Logo />
+            <span className="sr-only">Chatnopolis</span>
+          </h1>
           <p className="text-ink-soft">Un espacio tranquilo para conversar</p>
         </div>
 

@@ -44,6 +44,7 @@ client/
   src/components/     MessageList, MessageInput (fotos solo en DM), UserList, AdminModal,
                      TwoFactorSection (2FA, dentro del AdminModal), AgeGate (aviso 18+), LegalFooter,
                      Avatar (foto o círculo con inicial), GenderPicker ("Soy": radios name="gender"),
+                     Logo (emblema + texto en SVG, currentColor),
                      ProfileModal (Mi perfil: se abre tocando la tarjeta propia al pie del sidebar)
   src/lib/           api.js (fetch wrapper + uploadPhoto), session.js (token en localStorage),
                      gender.js (textos de cada género; los ids los decide server/profile.js),
@@ -188,6 +189,8 @@ Identidad: **verde petróleo**. La paleta de marca vive en `@theme` como `--colo
 | `bg-accent`, `accent-strong`, `accent-soft`, `accent-ink` | acento de marca; `accent-soft`+`accent-ink` es el par para elementos activos |
 
 **Regla:** nada de `bg-white`, `slate-*` ni `brand-*` en componentes nuevos — romperían el modo oscuro. Los colores de estado (ámbar admin, rosa DM, rojo peligro) sí van con utilidades de Tailwind, pero **siempre con su variante `dark:`** (el patrón es `bg-red-50 dark:bg-red-400/10`), porque los tonos `-50/-100` queman sobre fondo oscuro.
+
+**Marca.** El logo es `client/src/components/Logo.jsx`: dos trazados SVG (emblema y texto) vectorizados del original `docs/brand/logo-original.png`, que es morado. Por decisión de producto la forma se mantiene y el color es el de la app: va en **`currentColor`** (se usa con `text-accent-ink`), así que cambia solo con el modo oscuro. **No le pongas un color fijo.** Aparece en `AgeGate`, `AuthPage` (`layout="stacked"`) y en el encabezado del sidebar (`layout="inline"`), siempre con el nombre en `sr-only` dentro del h1/h2. Los íconos de `client/public/` (`favicon.svg`/`.ico`, `apple-touch-icon.png`, `icon-192/512.png`, `site.webmanifest`) salen de los mismos trazados con color fijo (`#2f8a86` + blanco), porque en la pestaña no hay modo oscuro que heredar. El favicon usa una versión **simplificada** (el disco con la C, sin las letras curvas ni los circuitos de afuera), porque en 16 px el texto curvo es ruido. Para cambiar el logo, se vuelven a trazar todos juntos.
 
 **Modo nocturno:** clase `dark` en `<html>`, no media query — `@custom-variant dark` en el CSS. `client/src/lib/theme.js` es la fuente de verdad (store mínimo con `useSyncExternalStore` + `localStorage` bajo `chatnopolis-theme`); `ThemeToggle.jsx` lo dispara y está en el header del sidebar y en `AuthPage`. Sin preferencia guardada **se sigue al sistema** y se reacciona a sus cambios en vivo; el toggle la fija y pasa a mandar. `client/public/theme-init.js` (script clásico, cargado en el `<head>` de `index.html`) aplica la clase antes del primer pintado para que no haya flash blanco — **si cambiás la clave de localStorage hay que cambiarla en los dos lados**. Es un archivo y no un script inline por la CSP (ver *Cabeceras de seguridad*). `emoji-picker-react` no ve el CSS: recibe el tema por prop desde `useTheme()`.
 

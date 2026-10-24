@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
 import { LEGAL } from '../lib/legal';
 import ThemeToggle from './ThemeToggle.jsx';
+import Logo from './Logo.jsx';
 
 const KEY = 'chatnopolis-age-ack';
 
@@ -57,7 +58,10 @@ export default function AgeGate({ children }) {
           </>
         ) : (
           <>
-            <h1 className="text-3xl font-bold text-accent-ink mb-2">Chatnopolis</h1>
+            <h1 className="text-accent-ink mb-3 pt-2">
+              <Logo />
+              <span className="sr-only">Chatnopolis</span>
+            </h1>
             <p className="text-ink-soft mb-6">Un espacio tranquilo para conversar</p>
 
             <div className="p-4 rounded-xl bg-surface border border-edge text-left mb-6">
