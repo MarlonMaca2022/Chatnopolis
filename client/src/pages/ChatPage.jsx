@@ -11,6 +11,7 @@ import AdminModal from '../components/AdminModal.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import LegalFooter from '../components/LegalFooter.jsx';
 import Avatar from '../components/Avatar.jsx';
+import Logo from '../components/Logo.jsx';
 import ProfileModal from '../components/ProfileModal.jsx';
 import { quoteLabel } from '../lib/messages';
 
@@ -349,8 +350,11 @@ export default function ChatPage() {
 
   const sidebar = (
     <>
-      <div className="p-6 border-b border-edge flex items-center justify-between">
-        <h2 className="text-xl font-bold text-accent-ink">Chatnopolis</h2>
+      <div className="px-4 py-6 border-b border-edge flex items-center justify-between">
+        <h2 className="text-accent-ink h-7 flex items-center">
+          <Logo layout="inline" />
+          <span className="sr-only">Chatnopolis</span>
+        </h2>
         <div className="flex items-center gap-3">
           {isAdmin && (
             <button
