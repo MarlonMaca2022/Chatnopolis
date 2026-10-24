@@ -27,7 +27,7 @@ npm run dev:client   # Vite dev server → http://localhost:5173 (proxy al backe
 
 ```
 server/
-  index.js     Arranque Express + Socket.IO, sirve /uploads y client/dist (SPA fallback)
+  index.js     Arranque Express + Socket.IO, cabeceras de seguridad (helmet + CSP), sirve /uploads y client/dist (SPA fallback)
   db.js        SQLite (node:sqlite): tablas + helpers users/rooms/messages/guestBans + seed inicial
   auth.js      Firmar tokens JWT y revalidarlos contra la base (sessionAccount); exige JWT_SECRET o aborta
   legal.js     TERMS_VERSION + edad mínima + los textos de rechazo por falta de consentimiento
@@ -138,6 +138,16 @@ Todo lo que frena el abuso **por frecuencia** vive en un solo módulo. Las cuota
 
 **El destinatario de un privado no es texto libre** (`server/socket.js`): tiene que ser una cuenta registrada o un invitado conectado ahora mismo, y como mucho `MAX_NICK_LENGTH` (20) caracteres. Antes un nombre inventado se guardaba igual, así que cada emit escribía una fila que nadie iba a leer nunca, con un `to` tan largo como el cliente quisiera (el tope de Socket.IO es 1 MB) y sin nada que la podara después.
 
+## Cabeceras de seguridad (`server/index.js`, `helmet`) — IMPORTANTE
+
+`helmet` va antes de todas las rutas, así que cubre la app, la API y `/uploads`.
+
+- **CSP: el navegador solo ejecuta código servido por este mismo sitio.** Aunque alguien lograra meter un `<script>` o un `onerror="..."` en la página (por un bug al mostrar un mensaje, por ejemplo), no corre y no puede robar la sesión del `localStorage`. Por eso `script-src 'self'` **sin `'unsafe-inline'`**: nada de `<script>` inline en `index.html` (el del tema vive en `client/public/theme-init.js`) ni atributos `on*=`.
+- Todo es `'self'` porque el cliente no carga nada de terceros (sin CDN, fuentes externas ni analítica). **Si algún día se suma un tercero, hay que agregarlo a la directiva que corresponda o el navegador lo bloquea en silencio** — y además la política de privacidad tiene que mencionarlo.
+- Las excepciones, cada una con su motivo: `style-src 'unsafe-inline'` (`emoji-picker-react` inyecta su CSS con un `<style>`; un estilo no ejecuta código), `img-src data:` (el QR del 2FA) y `img-src blob:` (la vista previa de la foto antes de mandarla). `connect-src 'self'` cubre también el WebSocket de Socket.IO.
+- **HSTS** 180 días, **sin `includeSubDomains` ni `preload`** a propósito: obligarían a cualquier subdominio futuro a tener HTTPS, y el preload no se deshace rápido. Sobre http (local) el navegador la ignora.
+- En desarrollo (`npm run dev:client`, :5173) el HTML lo sirve Vite y **no lleva CSP**: un bloqueo solo aparece con `npm run build && npm start`. Probar ahí cualquier cambio que cargue algo nuevo.
+
 ## Verificación en dos pasos (`server/totp.js`) — IMPORTANTE
 
 Código de 6 dígitos de una app (Google Authenticator, Authy…) además de la contraseña. El servidor la soporta para **cualquier cuenta registrada**; la pantalla para activarla (`TwoFactorSection`) hoy vive solo en el `AdminModal`, porque es la cuenta que la necesita.
@@ -179,7 +189,7 @@ Identidad: **verde petróleo**. La paleta de marca vive en `@theme` como `--colo
 
 **Regla:** nada de `bg-white`, `slate-*` ni `brand-*` en componentes nuevos — romperían el modo oscuro. Los colores de estado (ámbar admin, rosa DM, rojo peligro) sí van con utilidades de Tailwind, pero **siempre con su variante `dark:`** (el patrón es `bg-red-50 dark:bg-red-400/10`), porque los tonos `-50/-100` queman sobre fondo oscuro.
 
-**Modo nocturno:** clase `dark` en `<html>`, no media query — `@custom-variant dark` en el CSS. `client/src/lib/theme.js` es la fuente de verdad (store mínimo con `useSyncExternalStore` + `localStorage` bajo `chatnopolis-theme`); `ThemeToggle.jsx` lo dispara y está en el header del sidebar y en `AuthPage`. Sin preferencia guardada **se sigue al sistema** y se reacciona a sus cambios en vivo; el toggle la fija y pasa a mandar. El script inline de `client/index.html` aplica la clase antes del primer pintado para que no haya flash blanco — **si cambiás la clave de localStorage hay que cambiarla en los dos lados**. `emoji-picker-react` no ve el CSS: recibe el tema por prop desde `useTheme()`.
+**Modo nocturno:** clase `dark` en `<html>`, no media query — `@custom-variant dark` en el CSS. `client/src/lib/theme.js` es la fuente de verdad (store mínimo con `useSyncExternalStore` + `localStorage` bajo `chatnopolis-theme`); `ThemeToggle.jsx` lo dispara y está en el header del sidebar y en `AuthPage`. Sin preferencia guardada **se sigue al sistema** y se reacciona a sus cambios en vivo; el toggle la fija y pasa a mandar. `client/public/theme-init.js` (script clásico, cargado en el `<head>` de `index.html`) aplica la clase antes del primer pintado para que no haya flash blanco — **si cambiás la clave de localStorage hay que cambiarla en los dos lados**. Es un archivo y no un script inline por la CSP (ver *Cabeceras de seguridad*). `emoji-picker-react` no ve el CSS: recibe el tema por prop desde `useTheme()`.
 
 ## Convenciones / notas
 

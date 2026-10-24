@@ -15,17 +15,9 @@
     <meta name="RATING" content="RTA-5042-1996-1400-1577-RTA" />
     <meta name="theme-color" content="#edf2f1" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#10201f" media="(prefers-color-scheme: dark)" />
-    <script>
-      // Aplica el tema antes del primer pintado para que no haya flash blanco.
-      // Debe coincidir con la clave y la lógica de src/lib/theme.js.
-      (function () {
-        try {
-          var saved = localStorage.getItem('chatnopolis-theme');
-          var dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-          if (dark) document.documentElement.classList.add('dark');
-        } catch (e) {}
-      })();
-    </script>
+    <!-- Tema antes del primer pintado. Es un script clásico (no module) para que
+         bloquee el render y no haya flash blanco. Ver public/theme-init.js. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>
