@@ -257,10 +257,10 @@ etiqueta vieja, que se puede editar ahí mismo.
 
 Ya hecho: rate limiting en `/api/login` y `/api/register`, límite de ritmo de conexiones y de
 mensajes por socket, techo de retención para los privados, `nosniff` en `/uploads` y sesiones
-revocables con tokens de admin de 12 h. Ver las secciones *Límites de frecuencia* y *Sesiones*
-de CLAUDE.md. Queda:
+revocables con tokens de admin de 12 h, y cabeceras de seguridad con `helmet` (CSP, HSTS de
+180 días, referrer-policy). Ver las secciones *Límites de frecuencia*, *Sesiones* y *Cabeceras
+de seguridad* de CLAUDE.md. Queda:
 
-- `helmet` para el resto de las cabeceras de seguridad (CSP, HSTS, referrer-policy).
 - Validar las fotos por **magic bytes**, no solo por el `Content-Type` que declara quien sube.
 - `multer` 1.x está EOL: subir a 2.x.
 - **No existe forma de cambiar una contraseña desde la app** — no hay endpoint ni pantalla.
