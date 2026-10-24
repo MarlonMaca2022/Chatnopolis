@@ -3,7 +3,8 @@
 // color del texto donde se use (`text-accent-ink`) y cambiar solo con el modo oscuro:
 // nunca le pongas un color fijo. Los SVG son decorativos (aria-hidden); quien lo usa
 // deja el nombre como texto `sr-only` dentro de su h1/h2.
-// Los íconos de client/public/ (favicon y compañía) salen de estos mismos trazados.
+// El favicon y los íconos del celular no salen de acá: son un fantasmita aparte
+// (client/public/favicon.svg, ver CLAUDE.md, Marca).
 
 const MARK = {
   viewBox: '0 0 338 201',
@@ -27,17 +28,8 @@ export function LogoMark({ className = '' }) {
   return <Svg shape={MARK} className={className} />;
 }
 
-// `stacked`: emblema arriba y texto abajo (pantallas de entrada).
-// `inline`: emblema chico con el texto al lado (encabezado del sidebar).
-export default function Logo({ layout = 'stacked', className = '' }) {
-  if (layout === 'inline') {
-    return (
-      <span className={`inline-flex items-center gap-1.5 ${className}`}>
-        <LogoMark className="h-7 w-auto shrink-0" />
-        <Svg shape={WORD} className="h-2.5 w-auto" />
-      </span>
-    );
-  }
+// Emblema arriba y texto abajo (pantallas de entrada). El sidebar usa solo LogoMark.
+export default function Logo({ className = '' }) {
   return (
     <span className={`flex flex-col items-center gap-3 ${className}`}>
       <LogoMark className="w-40 h-auto" />
