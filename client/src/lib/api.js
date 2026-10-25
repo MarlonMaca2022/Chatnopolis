@@ -31,6 +31,14 @@ export const api = {
   disable2fa: (password, code, socketId) =>
     request('/2fa/disable', { method: 'POST', body: { password, code }, headers: socketHeader(socketId) }),
   revokeSessions: () => request('/sessions/revoke', { method: 'POST' }),
+  // Igual que el 2FA: cierra las demás sesiones y devuelve un token nuevo para esta.
+  // code solo hace falta si la cuenta tiene la verificación en dos pasos activa.
+  changePassword: (currentPassword, newPassword, code, socketId) =>
+    request('/password', {
+      method: 'POST',
+      body: { currentPassword, newPassword, code },
+      headers: socketHeader(socketId),
+    }),
   // Mi perfil de una cuenta registrada (el invitado lo cambia por el socket)
   getProfile: () => request('/profile'),
   updateProfile: (gender) => request('/profile', { method: 'PATCH', body: { gender } }),
@@ -46,6 +54,11 @@ export const api = {
   getUsers: () => request('/users'),
   unbanUser: (username) => request(`/users/${encodeURIComponent(username)}/unban`, { method: 'POST' }),
   unmuteUser: (username) => request(`/users/${encodeURIComponent(username)}/unmute`, { method: 'POST' }),
+  resetPassword: (username, newPassword, adminPassword, code) =>
+    request(`/users/${encodeURIComponent(username)}/password`, {
+      method: 'POST',
+      body: { newPassword, adminPassword, code },
+    }),
   getGuestBans: () => request('/guest-bans'),
   unbanGuest: (username) => request(`/guest-bans/${encodeURIComponent(username)}`, { method: 'DELETE' }),
   // socketId identifica la sesión viva del que sube. Es la credencial de los

@@ -45,7 +45,8 @@ client/
                      TwoFactorSection (2FA, dentro del AdminModal), AgeGate (aviso 18+), LegalFooter,
                      Avatar (foto o círculo con inicial), GenderPicker ("Soy": radios name="gender"),
                      Logo (emblema + texto en SVG, currentColor),
-                     ProfileModal (Mi perfil: se abre tocando la tarjeta propia al pie del sidebar)
+                     ProfileModal (Mi perfil: se abre tocando la tarjeta propia al pie del sidebar),
+                     PasswordSection (cambiar la contraseña, dentro de Mi perfil; solo registrados)
   src/lib/           api.js (fetch wrapper + uploadPhoto), session.js (token en localStorage),
                      gender.js (textos de cada género; los ids los decide server/profile.js),
                      messages.js (REACTIONS + quoteLabel() para citas),
@@ -171,7 +172,8 @@ Un JWT firmado vale hasta que vence, y antes no había forma de cortarlo: quien 
 - **El rol se lee de la fila, nunca del token.** `requireAuth` deja en `req.user` el rol de la base y rechaza con 403 a una cuenta baneada; `isAdmin()` (`server/socket.js`) vuelve a mirar rol y versión en cada acción de moderación, porque un socket puede seguir abierto después de que cambiaron.
 - **Duración**: admin **12 h**, resto **7 días** (`TOKEN_TTL`). El handshake es el único momento en que se mira el token, así que cada socket registrado tiene un timer que lo **corta cuando el token vence** — si no, una conexión abierta sobreviviría días a su token.
 - **`revokeSessions()`** (`server/socket.js`) sube la versión y desconecta **todos** los sockets de la cuenta (recorre `io.sockets.sockets`, no solo `usersOnline`: uno que no hizo `join` también tiene el token viejo). Con `keepSocketId` deja viva la pestaña que pidió el cambio, actualizándole la versión.
-- **Cuándo se cierran**: botón *Cerrar sesión en todos los dispositivos* del `AdminModal` (`POST /api/sessions/revoke`, incluye la propia; no pide contraseña: con un token robado lo único que se logra es echarse a uno mismo también), y al **activar o desactivar el 2FA** (devuelven un token nuevo; el cliente manda `X-Socket-Id` para que su pestaña siga). **Cualquier cambio futuro en cómo se entra a la cuenta** (cambiar contraseña, resetearla) tiene que pasar por `revokeSessions()` igual.
+- **Cuándo se cierran**: botón *Cerrar sesión en todos los dispositivos* del `AdminModal` (`POST /api/sessions/revoke`, incluye la propia; no pide contraseña: con un token robado lo único que se logra es echarse a uno mismo también), y al **activar o desactivar el 2FA** (devuelven un token nuevo; el cliente manda `X-Socket-Id` para que su pestaña siga). **Cualquier cambio en cómo se entra a la cuenta** tiene que pasar por `revokeSessions()` igual — hoy lo hacen también los dos de contraseña (abajo).
+- **Contraseña** (`server/routes.js`, ambos con `loginLimiter`): las reglas viven en **`passwordProblem()`**, que usa también el registro (mínimo 6; máximo **72 bytes**, porque bcrypt ignora en silencio lo que sigue). `POST /api/password` (*Mi perfil → Contraseña*, `PasswordSection`) pide la actual, y el código si la cuenta tiene 2FA (si no, token + contraseña robados dejarían afuera al dueño); devuelve token nuevo, como el 2FA (`replaceToken()` en `client/src/lib/session.js`). `POST /api/users/:u/password` (*Panel → Contraseña*) es el restablecimiento por el admin: pide **su** contraseña y su código —con un token de admin robado solo nadie se adueña de cuentas ajenas—, nunca sobre un admin ni sobre sí mismo, y echa a todas las sesiones de esa cuenta. No hay recuperación por email: la nueva se pasa por fuera del chat.
 - **Cliente**: el `auth` del socket en `ChatPage` es una **función** que lee `getSession()` en cada reconexión; con un objeto fijo, la reconexión usaría el token anterior al cambio y nos sacaría.
 
 ## Tema y color (`client/src/index.css`)
