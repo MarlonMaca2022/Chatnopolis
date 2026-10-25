@@ -84,3 +84,24 @@ body {
 .message-enter {
   animation: message-enter 0.2s ease-out;
 }
+
+/* Flotar suave del fantasmita de la homepage. Quien pidió menos movimiento en su
+   sistema lo ve quieto. */
+@keyframes ghost-float {
+  0%, 100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(3deg);
+  }
+}
+
+.ghost-float {
+  animation: ghost-float 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost-float {
+    animation: none;
+  }
+}

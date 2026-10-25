@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import { api } from '../lib/api';
 import { setSession } from '../lib/session';
@@ -49,9 +49,13 @@ function ConsentCheck({ checked, onChange }) {
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  // Llegadas desde la homepage: "Entrar a esta sala" trae ?sala=, y el campo de
+  // apodo de la portada manda el nick por estado de navegación (no por la URL).
+  const [params] = useSearchParams();
+  const guestNick = useLocation().state?.nick;
   const [tab, setTab] = useState('guest');
   const [rooms, setRooms] = useState([]);
-  const [roomId, setRoomId] = useState('general');
+  const [roomId, setRoomId] = useState(() => params.get('sala') || 'general');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -66,7 +70,14 @@ export default function AuthPage() {
   const [prefill, setPrefill] = useState(null);
 
   useEffect(() => {
-    api.getRooms().then(setRooms).catch(() => {});
+    api
+      .getRooms()
+      .then((list) => {
+        setRooms(list);
+        // Un ?sala= viejo o inventado cae en la primera sala en vez de quedar elegido sin existir.
+        setRoomId((id) => (list.some((r) => r.id === id) ? id : list[0]?.id || 'general'));
+      })
+      .catch(() => {});
     try {
       const saved = JSON.parse(sessionStorage.getItem('register_prefill'));
       if (saved) {
@@ -176,8 +187,10 @@ export default function AuthPage() {
         <div className="relative text-center mb-6">
           <ThemeToggle className="absolute right-0 top-0" />
           <h1 className="text-accent-ink mb-3 pt-2">
-            <Logo />
-            <span className="sr-only">Chatnopolis</span>
+            <Link to="/" className="inline-block" title="Volver al inicio">
+              <Logo />
+              <span className="sr-only">Chatnopolis</span>
+            </Link>
           </h1>
           <p className="text-ink-soft">Un espacio tranquilo para conversar</p>
         </div>
@@ -219,7 +232,13 @@ export default function AuthPage() {
           <form onSubmit={handleGuest} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-ink-soft mb-1">Tu Nick / Apodo</label>
-              <input name="username" required placeholder="Ej: Viajero_Astral" className={inputClass} />
+              <input
+                name="username"
+                required
+                placeholder="Ej: Viajero_Astral"
+                defaultValue={guestNick}
+                className={inputClass}
+              />
             </div>
             <GenderPicker />
             <ConsentCheck checked={accepted} onChange={setAccepted} />

@@ -2,6 +2,10 @@ import { useSyncExternalStore } from 'react';
 
 const KEY = 'chatnopolis-theme';
 const listeners = new Set();
+// Las páginas públicas también se renderizan en el servidor (server/seo.js), donde
+// no hay window ni localStorage: ahí el tema queda en claro y el navegador lo
+// corrige al hidratar.
+const hasDom = typeof window !== 'undefined';
 
 const systemQuery = () => window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -19,7 +23,7 @@ function resolve() {
   return stored() || (systemQuery().matches ? 'dark' : 'light');
 }
 
-let current = resolve();
+let current = hasDom ? resolve() : 'light';
 
 function apply(theme) {
   document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -46,12 +50,14 @@ export function toggleTheme() {
 
 // El toggle pisa al sistema, pero mientras nadie lo haya tocado seguimos sus cambios
 // (por ejemplo el modo nocturno automático del celular al anochecer).
-systemQuery().addEventListener('change', () => {
-  if (!stored()) emit(resolve());
-});
+if (hasDom) {
+  systemQuery().addEventListener('change', () => {
+    if (!stored()) emit(resolve());
+  });
 
-// El tema real ya lo aplicó el script inline de index.html; esto solo lo confirma
-apply(current);
+  // El tema real ya lo aplicó public/theme-init.js; esto solo lo confirma
+  apply(current);
+}
 
 export function useTheme() {
   return useSyncExternalStore(
@@ -60,6 +66,6 @@ export function useTheme() {
       return () => listeners.delete(fn);
     },
     () => current,
-    () => 'light' // sin DOM (no hay SSR acá, pero evita sorpresas)
+    () => 'light' // servidor y primer render de la hidratación: tiene que coincidir con el HTML prerenderizado
   );
 }

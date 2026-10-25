@@ -145,13 +145,13 @@ export default function ChatPage() {
       }
       sessionStorage.setItem('disconnect_reason', err.message || 'No se pudo conectar');
       clearSession();
-      navigate('/');
+      navigate('/entrar');
     });
 
     socket.on('forceDisconnect', (reason) => {
       sessionStorage.setItem('disconnect_reason', reason);
       clearSession();
-      navigate('/');
+      navigate('/entrar');
     });
 
     socket.on('history', ({ room, messages }) => {
@@ -253,7 +253,7 @@ export default function ChatPage() {
   function createAccount() {
     sessionStorage.setItem('register_prefill', JSON.stringify({ username, gender: me.gender }));
     clearSession();
-    navigate('/');
+    navigate('/entrar');
   }
 
   function openDM(target) {
@@ -346,7 +346,7 @@ export default function ChatPage() {
 
   function logout() {
     clearSession();
-    navigate('/');
+    navigate('/entrar');
   }
 
   const headerTitle =

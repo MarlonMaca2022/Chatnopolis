@@ -1,6 +1,7 @@
 node_modules/
 client/node_modules/
 client/dist/
+client/dist-server/
 uploads/
 data/chat.db
 data/chat.db-shm
