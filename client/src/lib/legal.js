@@ -302,7 +302,7 @@ export const LEGAL_PAGES = {
         id: 'seguridad-datos',
         heading: 'Cómo protegemos la información',
         paragraphs: [
-          'Las contraseñas se guardan con hash bcrypt, las sesiones usan tokens firmados, el sitio se sirve por conexión cifrada, el acceso de administración puede protegerse con verificación en dos pasos y hay límites de frecuencia para frenar los intentos automatizados de acceso.',
+          'Las contraseñas se guardan con hash bcrypt, las sesiones usan tokens firmados, el sitio se sirve por conexión cifrada, cualquier cuenta registrada puede protegerse con verificación en dos pasos y hay límites de frecuencia para frenar los intentos automatizados de acceso.',
           'Ningún sistema es infalible. Si detectamos un incidente que afecte tus datos, te lo comunicaremos.',
         ],
       },
@@ -367,6 +367,7 @@ export const LEGAL_PAGES = {
         paragraphs: [
           'No compartas tu dirección, tu teléfono, tu lugar de trabajo o estudio, tu documento ni datos bancarios. Tampoco los publiques en las salas, donde los ve todo el mundo.',
           'Usa una contraseña distinta de la de tu email y tus redes. Si esta se filtrara, no quieres que abra otras puertas.',
+          'Si tienes cuenta, activa la verificación en dos pasos desde Mi perfil: aunque alguien consiga tu contraseña, sin tu celular no entra.',
         ],
       },
       {

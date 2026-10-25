@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { LogOut, Shield, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { clearSession } from '../lib/session';
-import TwoFactorSection from './TwoFactorSection.jsx';
 
 // "43 min" / "2 h 10 min" / "permanente" — until null significa sin vencimiento
 function formatUntil(until) {
@@ -156,7 +155,7 @@ function ResetPasswordForm({ username, onDone, onCancel }) {
   );
 }
 
-export default function AdminModal({ socketId, onClose }) {
+export default function AdminModal({ onClose }) {
   const [rooms, setRooms] = useState([]);
   const [users, setUsers] = useState([]);
   const [resetting, setResetting] = useState(null); // usuario con el formulario de contraseña abierto
@@ -406,8 +405,6 @@ export default function AdminModal({ socketId, onClose }) {
               </ul>
             )}
           </div>
-
-          <TwoFactorSection socketId={socketId} />
 
           <SessionsSection />
         </div>

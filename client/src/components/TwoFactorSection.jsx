@@ -4,16 +4,16 @@ import { api } from '../lib/api';
 import { replaceToken } from '../lib/session';
 
 const inputClass =
-  'w-full px-3 py-2 bg-surface text-ink placeholder:text-ink-faint border border-edge rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent';
+  'w-full px-3 py-2.5 bg-muted text-ink placeholder:text-ink-faint border border-edge rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent';
 const primaryButton =
   'px-4 py-2 bg-accent text-white rounded-lg text-sm hover:bg-accent-strong disabled:opacity-60 transition';
 
 // "ABCD EFGH …" — más fácil de tipear a mano si la cámara no lee el QR
 const groupSecret = (secret) => secret.match(/.{1,4}/g).join(' ');
 
-// Verificación en dos pasos de la cuenta con la que se entró. Vive en el panel de
-// admin porque hoy es la única cuenta que la necesita; el servidor la soporta para
-// cualquier registrado. Los campos se leen del formulario al enviar, como en AuthPage.
+// Verificación en dos pasos de la cuenta con la que se entró. Vive en Mi perfil,
+// debajo de la contraseña, para cualquier cuenta registrada (admin incluido). Los
+// campos se leen del formulario al enviar, como en AuthPage.
 export default function TwoFactorSection({ socketId }) {
   // null mientras carga; después { enabled, recoveryLeft }
   const [status, setStatus] = useState(null);
@@ -78,10 +78,8 @@ export default function TwoFactorSection({ socketId }) {
   }
 
   return (
-    <div>
-      <h4 className="text-sm font-bold text-ink-faint uppercase tracking-wider mb-4 border-b border-edge pb-2">
-        Verificación en dos pasos
-      </h4>
+    <div className="border-t border-edge pt-5">
+      <p className="block text-sm font-medium text-ink-soft mb-2">Verificación en dos pasos</p>
 
       {error && (
         <p className="mb-3 text-sm text-red-600 bg-red-50 p-2 rounded-lg border border-red-200 dark:bg-red-400/10 dark:border-red-400/25 dark:text-red-300">

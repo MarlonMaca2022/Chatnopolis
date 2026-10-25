@@ -573,7 +573,7 @@ export default function ChatPage() {
         onClose={() => setShowUsers(false)}
       />
 
-      {showAdmin && <AdminModal socketId={socketId} onClose={() => setShowAdmin(false)} />}
+      {showAdmin && <AdminModal onClose={() => setShowAdmin(false)} />}
       {showProfile && (
         <ProfileModal
           me={me}
