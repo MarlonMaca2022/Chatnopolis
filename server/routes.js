@@ -51,6 +51,18 @@ function requireAdmin(req, res, next) {
   });
 }
 
+// Reglas de una contraseña nueva, para el registro y para cambiarla. Devuelve el
+// mensaje de error o null. El techo es en bytes porque bcrypt solo mira los
+// primeros 72: lo que sigue se ignora en silencio, y una frase larga con tildes
+// valdría lo mismo que su comienzo.
+function passwordProblem(password) {
+  if (typeof password !== 'string' || password.length < 6) {
+    return 'La contraseña debe tener al menos 6 caracteres';
+  }
+  if (Buffer.byteLength(password) > 72) return 'La contraseña es demasiado larga (máximo 72 caracteres)';
+  return null;
+}
+
 // Segundo factor de una cuenta que lo tiene activo: el código de la app o uno de
 // los de recuperación. Devuelve null si pasa, o { status, message } para responder.
 function checkSecondFactor(user, code) {
@@ -154,9 +166,8 @@ router.post('/register', registerLimiter, (req, res) => {
   if (isReservedNick(username)) {
     return res.status(400).json({ success: false, message: 'Ese nombre está reservado. Elige otro.' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ success: false, message: 'La contraseña debe tener al menos 6 caracteres' });
-  }
+  const weak = passwordProblem(password);
+  if (weak) return res.status(400).json({ success: false, message: weak });
   // Por canónica: "Admin" no puede registrarse al lado de "admin"
   if (users.findByNick(username)) {
     return res.status(400).json({ success: false, message: 'El usuario ya existe' });
@@ -271,6 +282,63 @@ function renewAfterSecurityChange(req, user, what) {
   });
   return signToken(users.findByNick(user.username));
 }
+
+// --- Contraseña ---
+// La actual es obligatoria: con un token robado solo no se cambia. Y si la cuenta
+// tiene segundo factor, también el código — si no, quien tuviera el token y la
+// contraseña dejaría afuera al dueño. Como todo cambio en cómo se entra, cierra las
+// demás sesiones (renewAfterSecurityChange). loginLimiter porque cuesta un bcrypt.
+router.post('/password', loginLimiter, requireAuth, (req, res) => {
+  const user = currentUser(req, res);
+  if (!user) return;
+  const { currentPassword, newPassword, code } = req.body || {};
+  if (!bcrypt.compareSync(currentPassword || '', user.password_hash)) {
+    return res.status(401).json({ success: false, message: 'La contraseña actual no es correcta' });
+  }
+  const weak = passwordProblem(newPassword);
+  if (weak) return res.status(400).json({ success: false, message: weak });
+  if (newPassword === currentPassword) {
+    return res.status(400).json({ success: false, message: 'La nueva contraseña tiene que ser distinta de la actual' });
+  }
+  if (user.totp_secret) {
+    if (!code) return res.status(400).json({ success: false, message: 'Escribe el código de tu app de verificación' });
+    const failure = checkSecondFactor(user, code);
+    if (failure) return res.status(failure.status).json({ success: false, message: failure.message });
+  }
+  users.setPassword(user.username, bcrypt.hashSync(newPassword, 10));
+  const token = renewAfterSecurityChange(req, user, 'Se cambió la contraseña de tu cuenta.');
+  res.json({ success: true, token });
+});
+
+// El admin le pone una contraseña nueva a otra cuenta (la persona la olvidó) y se
+// la pasa por fuera del chat. Pide la contraseña del admin, y su código si tiene
+// segundo factor: con un token de admin robado solo, nadie se adueña de cuentas
+// ajenas. Nunca sobre otro admin, ni sobre la propia (para eso está /password).
+router.post('/users/:username/password', loginLimiter, requireAdmin, (req, res) => {
+  const admin = currentUser(req, res);
+  if (!admin) return;
+  const { adminPassword, newPassword, code } = req.body || {};
+  if (!bcrypt.compareSync(adminPassword || '', admin.password_hash)) {
+    return res.status(401).json({ success: false, message: 'Tu contraseña no es correcta' });
+  }
+  if (admin.totp_secret) {
+    if (!code) return res.status(400).json({ success: false, message: 'Escribe el código de tu app de verificación' });
+    const failure = checkSecondFactor(admin, code);
+    if (failure) return res.status(failure.status).json({ success: false, message: failure.message });
+  }
+  const target = users.findByNick(req.params.username);
+  if (!target) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+  if (target.username_canon === admin.username_canon || target.role === 'admin') {
+    return res.status(400).json({ success: false, message: 'No se puede restablecer la contraseña de un administrador' });
+  }
+  const weak = passwordProblem(newPassword);
+  if (weak) return res.status(400).json({ success: false, message: weak });
+  users.setPassword(target.username, bcrypt.hashSync(newPassword, 10));
+  revokeSessions(req.app.get('io'), target.username, {
+    reason: 'Un administrador restableció tu contraseña. Entra con la nueva.',
+  });
+  res.json({ success: true });
+});
 
 // --- Sesiones ---
 // "Cerrar sesión en todos los dispositivos", incluido este. Es la salida si se

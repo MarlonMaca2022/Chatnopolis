@@ -217,9 +217,15 @@ sqlite3 ~/Chatnopolis/data/chat.db \
   "UPDATE users SET session_version = session_version + 1 WHERE role = 'admin';"
 ```
 
-Si además sospechás que se filtró la contraseña, cambiala (hoy, editando el hash con `sqlite3`;
-ver *Endurecimiento pendiente*). Como último recurso, cambiar `JWT_SECRET` en `.env` y
-`pm2 restart chatnopolis` cierra las sesiones de **todas** las cuentas.
+Si además sospechás que se filtró la contraseña, cambiala desde **Mi perfil → Contraseña**
+(pide la actual y el código; cierra las demás sesiones sola). Como último recurso, cambiar
+`JWT_SECRET` en `.env` y `pm2 restart chatnopolis` cierra las sesiones de **todas** las cuentas.
+
+### Alguien olvidó su contraseña
+
+No hay recuperación por email. El admin le pone una nueva desde **Panel de Administración →
+Usuarios Registrados → Contraseña** (con su propia contraseña y código) y se la pasa por fuera
+del chat; la persona después la cambia desde Mi perfil. No sirve para otra cuenta admin.
 
 ## 11. Renombrar una cuenta (por ejemplo, el admin)
 
@@ -257,17 +263,12 @@ etiqueta vieja, que se puede editar ahí mismo.
 
 Ya hecho: rate limiting en `/api/login` y `/api/register`, límite de ritmo de conexiones y de
 mensajes por socket, techo de retención para los privados, `nosniff` en `/uploads` y sesiones
-revocables con tokens de admin de 12 h, y cabeceras de seguridad con `helmet` (CSP, HSTS de
-180 días, referrer-policy). Ver las secciones *Límites de frecuencia*, *Sesiones* y *Cabeceras
-de seguridad* de CLAUDE.md. Queda:
+revocables con tokens de admin de 12 h, cabeceras de seguridad con `helmet` (CSP, HSTS de
+180 días, referrer-policy) y cambio/restablecimiento de contraseña desde la app. Ver las
+secciones *Límites de frecuencia*, *Sesiones* y *Cabeceras de seguridad* de CLAUDE.md. Queda:
 
 - Validar las fotos por **magic bytes**, no solo por el `Content-Type` que declara quien sube.
 - `multer` 1.x está EOL: subir a 2.x.
-- **No existe forma de cambiar una contraseña desde la app** — no hay endpoint ni pantalla.
-  De ahí que `ADMIN_PASSWORD` haya que acertarla en el primer arranque: si el admin quedó
-  con `admin123` (que es pública), las únicas salidas son borrar `data/chat.db` y empezar
-  de nuevo, o editar el hash a mano con `sqlite3`. Falta un `POST /api/password` que pida
-  la contraseña actual, y que el admin pueda resetear la de otro.
 - Servir `uploads/` desde nginx directamente para quitarle carga a Node.
 - Si aparece spam de bots pese a los límites: un desafío tipo "no soy un robot" en el registro
   y en la entrada como invitado (Cloudflare Turnstile es la opción sin costo ni tracking).

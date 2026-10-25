@@ -577,6 +577,7 @@ export default function ChatPage() {
       {showProfile && (
         <ProfileModal
           me={me}
+          socketId={socketId}
           onClose={() => setShowProfile(false)}
           onGuestSave={saveGuestProfile}
           onCreateAccount={createAccount}

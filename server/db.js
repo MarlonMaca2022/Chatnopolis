@@ -255,6 +255,11 @@ const users = {
   avatarUrls: () =>
     db.prepare('SELECT avatar_url FROM users WHERE avatar_url IS NOT NULL').all().map((r) => r.avatar_url),
 
+  // Quien la llame tiene que cerrar las sesiones de la cuenta (revokeSessions):
+  // cambiar la contraseña sin echar a quien ya entró no protege de nada.
+  setPassword: (username, passwordHash) =>
+    db.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(passwordHash, username),
+
   // Invalida todos los tokens firmados hasta ahora. Devuelve la versión nueva, que es
   // la que tiene que llevar cualquier token que se firme después.
   bumpSessionVersion: (username) =>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Shield, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
@@ -62,9 +62,105 @@ function SessionsSection() {
   );
 }
 
+// Contraseña nueva para otra cuenta (la persona la olvidó): el admin la elige y se la
+// pasa por fuera del chat. Pide la contraseña del admin, y su código si tiene 2FA,
+// porque el servidor los exige: con la sesión del admin sola no alcanza.
+function ResetPasswordForm({ username, onDone, onCancel }) {
+  const [needsCode, setNeedsCode] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.get2fa().then((s) => setNeedsCode(s.enabled)).catch((err) => setError(err.message));
+  }, []);
+
+  async function submit(e) {
+    e.preventDefault();
+    const form = e.target;
+    setError('');
+    setBusy(true);
+    try {
+      await api.resetPassword(
+        username,
+        form.newPassword.value,
+        form.adminPassword.value,
+        needsCode ? form.code.value.trim() : undefined
+      );
+      onDone();
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  const input =
+    'w-full px-3 py-2 bg-surface text-ink placeholder:text-ink-faint border border-edge rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-accent';
+  return (
+    <form onSubmit={submit} className="p-3 bg-app rounded-lg border border-edge space-y-2">
+      <p className="text-xs text-ink-soft">
+        Nueva contraseña para <strong className="text-ink">{username}</strong>. Se cierran sus sesiones
+        abiertas; pásale la contraseña por fuera del chat.
+      </p>
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-200 dark:bg-red-400/10 dark:border-red-400/25 dark:text-red-300">
+          {error}
+        </p>
+      )}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {/* Visible (type="text") a propósito: el admin la tiene que copiar para pasársela */}
+        <input
+          name="newPassword"
+          type="text"
+          required
+          minLength={6}
+          autoComplete="off"
+          placeholder="Nueva contraseña"
+          className={input}
+        />
+        <input
+          name="adminPassword"
+          type="password"
+          required
+          autoComplete="current-password"
+          placeholder="Tu contraseña de admin"
+          className={input}
+        />
+        {needsCode && (
+          <input
+            name="code"
+            required
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="Tu código de verificación"
+            className={input}
+          />
+        )}
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 rounded-lg text-xs border border-edge text-ink-soft hover:bg-muted transition"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          disabled={busy}
+          className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs hover:bg-accent-strong disabled:opacity-60 transition"
+        >
+          {busy ? 'Guardando…' : 'Restablecer'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function AdminModal({ socketId, onClose }) {
   const [rooms, setRooms] = useState([]);
   const [users, setUsers] = useState([]);
+  const [resetting, setResetting] = useState(null); // usuario con el formulario de contraseña abierto
+  const [notice, setNotice] = useState('');
   const [guestBans, setGuestBans] = useState([]);
   const [newRoom, setNewRoom] = useState('');
   const [error, setError] = useState('');
@@ -191,6 +287,11 @@ export default function AdminModal({ socketId, onClose }) {
             <h4 className="text-sm font-bold text-ink-faint uppercase tracking-wider mb-4 border-b border-edge pb-2">
               Usuarios Registrados
             </h4>
+            {notice && (
+              <p className="mb-3 text-sm text-emerald-700 bg-emerald-50 p-2 rounded-lg border border-emerald-200 dark:bg-emerald-400/10 dark:border-emerald-400/25 dark:text-emerald-300">
+                {notice}
+              </p>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left text-ink-soft">
                 <thead className="text-xs text-ink uppercase bg-muted">
@@ -203,45 +304,72 @@ export default function AdminModal({ socketId, onClose }) {
                 </thead>
                 <tbody>
                   {users.map((user) => (
-                    <tr key={user.username} className="border-b border-edge">
-                      <td className="px-4 py-2 font-medium">{user.username}</td>
-                      <td className="px-4 py-2">{user.role}</td>
-                      <td className="px-4 py-2 space-x-1">
-                        {user.isBanned && (
-                          <span className="px-2 py-0.5 bg-red-100 text-red-600 dark:bg-red-400/15 dark:text-red-300 rounded-full text-xs">
-                            Baneado · {formatUntil(user.bannedUntil)}
-                          </span>
-                        )}
-                        {user.isMuted && (
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-600 dark:bg-amber-400/15 dark:text-amber-300 rounded-full text-xs">
-                            Silenciado
-                          </span>
-                        )}
-                        {!user.isBanned && !user.isMuted && (
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300 rounded-full text-xs">
-                            Activo
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-right whitespace-nowrap space-x-2">
-                        {user.isBanned && (
-                          <button
-                            onClick={() => run(() => api.unbanUser(user.username))}
-                            className="text-xs text-red-600 dark:text-red-400 hover:underline"
-                          >
-                            Desbanear
-                          </button>
-                        )}
-                        {user.isMuted && (
-                          <button
-                            onClick={() => run(() => api.unmuteUser(user.username))}
-                            className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
-                          >
-                            Desilenciar
-                          </button>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={user.username}>
+                      <tr className="border-b border-edge">
+                        <td className="px-4 py-2 font-medium">{user.username}</td>
+                        <td className="px-4 py-2">{user.role}</td>
+                        <td className="px-4 py-2 space-x-1">
+                          {user.isBanned && (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-600 dark:bg-red-400/15 dark:text-red-300 rounded-full text-xs">
+                              Baneado · {formatUntil(user.bannedUntil)}
+                            </span>
+                          )}
+                          {user.isMuted && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-600 dark:bg-amber-400/15 dark:text-amber-300 rounded-full text-xs">
+                              Silenciado
+                            </span>
+                          )}
+                          {!user.isBanned && !user.isMuted && (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300 rounded-full text-xs">
+                              Activo
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-right whitespace-nowrap space-x-2">
+                          {user.isBanned && (
+                            <button
+                              onClick={() => run(() => api.unbanUser(user.username))}
+                              className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                            >
+                              Desbanear
+                            </button>
+                          )}
+                          {user.isMuted && (
+                            <button
+                              onClick={() => run(() => api.unmuteUser(user.username))}
+                              className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                            >
+                              Desilenciar
+                            </button>
+                          )}
+                          {user.role !== 'admin' && (
+                            <button
+                              onClick={() => {
+                                setNotice('');
+                                setResetting(resetting === user.username ? null : user.username);
+                              }}
+                              className="text-xs text-accent-ink hover:underline"
+                            >
+                              Contraseña
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {resetting === user.username && (
+                        <tr className="border-b border-edge">
+                          <td colSpan={4} className="px-4 py-3">
+                            <ResetPasswordForm
+                              username={user.username}
+                              onCancel={() => setResetting(null)}
+                              onDone={() => {
+                                setResetting(null);
+                                setNotice(`Listo: ${user.username} ya puede entrar con la contraseña nueva.`);
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
