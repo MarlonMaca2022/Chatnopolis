@@ -28,6 +28,11 @@ export function LogoMark({ className = '' }) {
   return <Svg shape={MARK} className={className} />;
 }
 
+// Solo el texto "Chatnopolis", para armar el logo en horizontal (encabezado de la homepage).
+export function LogoWord({ className = '' }) {
+  return <Svg shape={WORD} className={className} />;
+}
+
 // Emblema arriba y texto abajo (pantallas de entrada). El sidebar usa solo LogoMark.
 export default function Logo({ className = '' }) {
   return (

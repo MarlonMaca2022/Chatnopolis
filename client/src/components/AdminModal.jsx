@@ -29,7 +29,7 @@ function SessionsSection() {
       await api.revokeSessions();
       sessionStorage.setItem('disconnect_reason', 'Cerraste la sesión en todos los dispositivos.');
       clearSession();
-      navigate('/');
+      navigate('/entrar');
     } catch (err) {
       setError(err.message);
       setBusy(false);

@@ -18,7 +18,7 @@ export default function LegalPage({ page }) {
             className="flex items-center gap-2 text-sm text-ink-soft hover:text-accent transition-colors"
           >
             <ArrowLeft size={16} />
-            <span>Volver al chat</span>
+            <span>Volver al inicio</span>
           </Link>
           <ThemeToggle />
         </div>
