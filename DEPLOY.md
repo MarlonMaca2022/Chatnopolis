@@ -179,6 +179,40 @@ npm run build
 pm2 restart chatnopolis
 ```
 
+### Parches de seguridad (revisión mensual)
+
+**Node no se actualiza solo.** `unattended-upgrades` instala los parches de Ubuntu, pero Node
+viene de NodeSource, que no está en sus orígenes. Y aunque se actualizara, el proceso de la app
+sigue con el binario viejo en memoria hasta el próximo `pm2 restart`. Una vez al mes (o cuando
+salga un aviso):
+
+1. Mirá <https://nodejs.org/en/blog/vulnerability>: cada boletín dice qué versión de cada línea
+   trae el parche (por ejemplo, el del 21/10/2026 → `22.23.4` para la línea 22).
+2. Compará con la que corre de verdad — la del proceso, no la instalada:
+
+   ```bash
+   PID=$(sudo -iu chatnopolis pm2 pid chatnopolis)
+   $(readlink /proc/$PID/exe) --version
+   ```
+
+3. Si quedó atrás, como root:
+
+   ```bash
+   apt update && apt install --only-upgrade -y nodejs
+   node --version                                   # tiene que dar la del boletín
+   sudo -iu chatnopolis pm2 restart chatnopolis     # recién acá la app usa el binario nuevo
+   ```
+
+   No hace falta backup (no toca `data/`) y el corte dura un par de segundos.
+
+4. De paso, las dependencias del proyecto: `cd ~/Chatnopolis && npm audit --omit=dev`. Si
+   reporta algo, se arregla en la PC con `npm audit fix --omit=dev`, se prueba, y se despliega
+   como cualquier cambio (paso 9). Así apareció el de `body-parser` (24/10/2026).
+
+La PC de desarrollo también: el instalador LTS de nodejs.org encima del actual. Corre otra línea
+que el servidor (24 vs 22) y no recibe tráfico de internet, así que es menos urgente, pero un
+Node viejo ahí ejecuta igual el código de las dependencias que se instalan.
+
 ## 10. Verificación en dos pasos
 
 Cualquier cuenta registrada la activa desde la app: **Mi perfil → Verificación en dos pasos → Activar**,
