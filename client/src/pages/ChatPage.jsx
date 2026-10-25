@@ -59,6 +59,25 @@ export default function ChatPage() {
   // El servidor igual ignora citas de otra sala u otro privado.
   useEffect(() => setReplyingTo(null), [activeView.type, activeView.target]);
 
+  // Marcadores de contenido adulto, solo mientras se está en el chat. El servidor
+  // ya los pone si /chat se carga directo (server/seo.js), pero lo normal es llegar
+  // navegando desde la portada sin recargar el <head>. Al salir se sacan todos,
+  // también los del servidor, para que la portada no se quede con ellos.
+  useEffect(() => {
+    const ratings = { rating: 'adult', RATING: 'RTA-5042-1996-1400-1577-RTA' };
+    // Comparación exacta: "rating" y "RATING" son dos etiquetas distintas.
+    const present = () => [...document.head.querySelectorAll('meta[name]')].filter((m) => m.name in ratings);
+    const have = new Set(present().map((m) => m.name));
+    for (const [name, content] of Object.entries(ratings)) {
+      if (have.has(name)) continue;
+      const meta = document.createElement('meta');
+      meta.name = name;
+      meta.content = content;
+      document.head.appendChild(meta);
+    }
+    return () => present().forEach((meta) => meta.remove());
+  }, []);
+
   // Estado y no una lectura de `session`: el invitado puede cambiarse el nick desde
   // Mi perfil sin reconectar. El ref es para el handler `message`, registrado una vez.
   const [username, setUsername] = useState(session?.username);
