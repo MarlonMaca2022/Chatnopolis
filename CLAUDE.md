@@ -42,7 +42,7 @@ server/
 client/
   src/pages/         AuthPage (invitado/login/registro), ChatPage, LegalPage (renderiza las 3 legales)
   src/components/     MessageList, MessageInput (fotos solo en DM), UserList, AdminModal,
-                     TwoFactorSection (2FA, dentro del AdminModal), AgeGate (aviso 18+), LegalFooter,
+                     TwoFactorSection (2FA, dentro de Mi perfil), AgeGate (aviso 18+), LegalFooter,
                      Avatar (foto o círculo con inicial), GenderPicker ("Soy": radios name="gender"),
                      Logo (emblema + texto en SVG, currentColor),
                      ProfileModal (Mi perfil: se abre tocando la tarjeta propia al pie del sidebar),
@@ -152,7 +152,7 @@ Todo lo que frena el abuso **por frecuencia** vive en un solo módulo. Las cuota
 
 ## Verificación en dos pasos (`server/totp.js`) — IMPORTANTE
 
-Código de 6 dígitos de una app (Google Authenticator, Authy…) además de la contraseña. El servidor la soporta para **cualquier cuenta registrada**; la pantalla para activarla (`TwoFactorSection`) hoy vive solo en el `AdminModal`, porque es la cuenta que la necesita.
+Código de 6 dígitos de una app (Google Authenticator, Authy…) además de la contraseña. Es para **cualquier cuenta registrada**: la pantalla (`TwoFactorSection`) vive en *Mi perfil*, debajo de la contraseña (antes estaba solo en el `AdminModal`, y un usuario común no tenía forma de activarla).
 
 - **TOTP propio, sin dependencia**: ~30 líneas sobre `node:crypto`, probado contra los vectores del RFC 6238. Acepta ±1 paso de 30 s por el desfase de reloj del celular. El QR lo genera el servidor con `qrcode` (data URL): **nunca un servicio externo de QR**, que vería el secreto.
 - **Login: mismo patrón que `termsOutdated`.** Con la contraseña bien, `POST /api/login` devuelve **200 con `needsCode: true` y sin token**; `AuthPage` muestra el campo y reenvía con `code`. Orden: contraseña → ban → términos (sin escribir) → código → recién ahí se guarda la aceptación de términos y se firma el token. Así **la contraseña sola no escribe nada** en la cuenta, y el código se consume en el único pedido que firma.
@@ -161,7 +161,7 @@ Código de 6 dígitos de una app (Google Authenticator, Authy…) además de la 
 - **Activar pide contraseña + código, y desactivar también.** Con un token robado solo, nadie le saca la protección a la cuenta ni la activa con *su* celular para dejar afuera al dueño. El secreto queda en `totp_pending` hasta que se confirma: un QR abandonado no protege nada ni deja la cuenta a medias.
 - **Códigos de recuperación**: 10, de un solo uso, se muestran **una única vez** al activar. Se guardan con SHA-256 (no bcrypt: tienen 40 bits al azar, y bcrypt bloquearía el hilo una vez por código). Sirven en el login y para desactivar.
 - **Activarla o desactivarla cierra las demás sesiones** de la cuenta (ver *Sesiones*): la pestaña desde la que se hizo recibe un token nuevo y sigue conectada.
-- Si el admin pierde el celular **y** los códigos, se apaga desde el servidor (DEPLOY.md, *Verificación en dos pasos*).
+- Si alguien pierde el celular **y** los códigos, se apaga desde el servidor (DEPLOY.md, *Verificación en dos pasos*). Restablecerle la contraseña desde el panel **no** alcanza: el 2FA sigue activo.
 - La política de privacidad menciona la clave y los hashes que se guardan: si cambia lo que se persiste, se actualiza el texto.
 
 ## Sesiones (`server/auth.js`) — IMPORTANTE

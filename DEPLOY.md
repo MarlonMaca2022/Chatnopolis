@@ -179,9 +179,9 @@ npm run build
 pm2 restart chatnopolis
 ```
 
-## 10. Verificación en dos pasos del admin
+## 10. Verificación en dos pasos
 
-Se activa desde la app: **Panel de Administración → Verificación en dos pasos → Activar**,
+Cualquier cuenta registrada la activa desde la app: **Mi perfil → Verificación en dos pasos → Activar**,
 escaneando el QR con Google Authenticator, Authy o similar. Al confirmar se muestran **10
 códigos de recuperación una sola vez**: guardalos fuera del celular (gestor de contraseñas,
 papel). Cada uno reemplaza al código de la app en un login.
@@ -197,6 +197,12 @@ sqlite3 ~/Chatnopolis/data/chat.db \
 
 Va por rol y no por nombre para no tener que escribir acá cómo se llama el admin. Si hay más
 de un admin, se los apaga a todos: cada uno la vuelve a activar.
+
+**Si le pasa a un usuario** (escribe al correo de contacto), es el mismo comando con
+`WHERE username_canon = 'nombre'` (sin tildes ni espacios, en minúsculas) en vez del rol.
+Restablecerle la contraseña desde el panel no alcanza: el código se le seguiría pidiendo.
+Antes, asegurate de que quien escribe es el dueño de la cuenta (por ejemplo, desde el email
+con el que se registró).
 
 Después entrá con la contraseña sola y volvé a activarla con el celular nuevo. Quien puede
 correr eso ya tiene acceso al servidor, así que no abre ninguna puerta nueva: por eso importa

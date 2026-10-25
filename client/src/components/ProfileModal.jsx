@@ -5,6 +5,7 @@ import { compressImage, formatBytes } from '../lib/compressImage';
 import Avatar from './Avatar.jsx';
 import GenderPicker from './GenderPicker.jsx';
 import PasswordSection from './PasswordSection.jsx';
+import TwoFactorSection from './TwoFactorSection.jsx';
 
 const inputClass =
   'w-full px-3 py-2.5 rounded-lg border border-edge bg-muted text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-accent';
@@ -19,8 +20,9 @@ const AVATAR_LIMIT_MB = 1;
 // avatarUrl }): como el servidor la reenvía con cada cambio, lo que se guarda acá
 // vuelve solo por esa vía y no hace falta estado propio de la foto ni del género.
 // Invitado: cambia nick y género por el socket (`onGuestSave`). Registrado: su nick
-// es fijo, el género va por REST y es el único que puede tener foto y contraseña
-// (PasswordSection; `socketId` es para que esta pestaña siga conectada al cambiarla).
+// es fijo, el género va por REST y es el único que puede tener foto, contraseña y
+// 2FA (PasswordSection, TwoFactorSection; `socketId` es para que esta pestaña siga
+// conectada cuando esos cambios cierran las demás sesiones).
 export default function ProfileModal({ me, socketId, onClose, onGuestSave, onCreateAccount }) {
   const isGuest = me.role === 'guest';
   const fileRef = useRef(null);
@@ -214,6 +216,7 @@ export default function ProfileModal({ me, socketId, onClose, onGuestSave, onCre
           </form>
 
           {!isGuest && <PasswordSection socketId={socketId} />}
+          {!isGuest && <TwoFactorSection socketId={socketId} />}
         </div>
       </div>
     </div>
