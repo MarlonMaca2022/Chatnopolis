@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const http = require('http');
-const path = require('path');
 const fs = require('fs');
 const { Server } = require('socket.io');
 
@@ -11,6 +10,7 @@ const { setupSocket } = require('./socket');
 const { startCleanupJobs } = require('./cleanup');
 const { UPLOADS_DIR } = require('./uploads');
 const { apiLimiter, TRUST_PROXY } = require('./ratelimit');
+const { CLIENT_DIST, renderPage } = require('./seo');
 
 const app = express();
 const server = http.createServer(app);
@@ -82,13 +82,12 @@ app.use(
   })
 );
 
-// Frontend React compilado (client/dist) con fallback SPA
-const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
+// Frontend React compilado (client/dist) con fallback SPA. `index: false` para que
+// "/" tampoco salga directo del disco: todo HTML pasa por renderPage(), que le pone
+// a cada ruta su <head> (ver server/seo.js).
 if (fs.existsSync(CLIENT_DIST)) {
-  app.use(express.static(CLIENT_DIST));
-  app.get(/^\/(?!api|uploads|socket\.io).*/, (req, res) =>
-    res.sendFile(path.join(CLIENT_DIST, 'index.html'))
-  );
+  app.use(express.static(CLIENT_DIST, { index: false }));
+  app.get(/^\/(?!api|uploads|socket\.io).*/, (req, res) => res.type('html').send(renderPage(req.path)));
 }
 
 setupSocket(io);

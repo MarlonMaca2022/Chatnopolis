@@ -39,6 +39,7 @@ server/
   uploads.js   UPLOADS_DIR + removeUploadFile() (único módulo que borra fotos) + cuotas y techo de disco
   cleanup.js   Poda de historial y barrido de fotos vencidas/huérfanas (startCleanupJobs)
   profile.js   Datos de perfil: GENDERS + validGender()
+  seo.js       <head> de cada ruta: reemplaza el marcador <!--seo--> de client/dist/index.html (renderPage)
 client/
   src/pages/         AuthPage (invitado/login/registro), ChatPage, LegalPage (renderiza las 3 legales)
   src/components/     MessageList, MessageInput (fotos solo en DM), UserList, AdminModal,
@@ -112,7 +113,7 @@ El chat permite **contenido adulto entre adultos** en privado, así que la edad 
 - **El responsable legal es una sola constante** (`LEGAL` en `client/src/lib/legal.js`): nombre, email de contacto y edad mínima. Hoy es genérico y sin jurisdicción, por decisión de producto. Nombrar una razón social y un país es cambiar ese objeto — el texto de las tres páginas ya lo interpola.
 - **La política de privacidad describe el sistema real, y eso es un compromiso**: si cambiás la retención (500 por sala, 90 días de DM, TTL de 24 h), o empezás a guardar IPs, o agregás analítica o un tercero, **hay que actualizar el texto en el mismo commit**. Una política que describe mal el sistema es peor que no tenerla.
 - El camino de reporte de esta ola es **el email** publicado en las tres páginas. No hay botón "Reportar" en la UI todavía: es una ola aparte.
-- `client/index.html` lleva `<meta name="rating" content="adult">` y la etiqueta RTA — es lo que leen los filtros de control parental. Si algún día se prohíbe el contenido explícito, esas dos líneas salen.
+- **La etiqueta de contenido adulto va por página, solo en `/chat`**: `<meta name="rating" content="adult">` + la etiqueta RTA, que es lo que leen los filtros de control parental (y Google para SafeSearch). La portada, las salas y las legales no tienen nada explícito y van sin ella, así aparecen en Google con SafeSearch activado — lo adulto vive en los privados, que solo existen dentro de `/chat`. Las ponen **dos lados**: `server/seo.js` (`ADULT_PATHS`, junto con un `noindex`) cuando `/chat` se carga directo, y un `useEffect` de `ChatPage` cuando se llega navegando dentro de la SPA, que no recarga el `<head>`; al salir del chat las saca todas. Si algún día hay una sala +18, su ruta se suma a `ADULT_PATHS`. Si se prohíbe el contenido explícito, salen de los dos lados.
 
 ## Fotos / uploads — IMPORTANTE
 
