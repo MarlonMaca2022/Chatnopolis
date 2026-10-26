@@ -9,6 +9,8 @@ import { setServerData } from './lib/initialData';
 // públicas: así no arrastra el chat (socket.io, el selector de emojis) al servidor.
 
 export const PRERENDER_PATHS = PUBLIC_ROUTES.map((r) => r.path);
+// Título y descripción de cada ruta, y la lista de rutas que existen (lib/seo.js)
+export { APP_PATHS, PAGE_META, SITE_NAME } from './lib/seo';
 
 export function render(url, data = {}) {
   setServerData(data);

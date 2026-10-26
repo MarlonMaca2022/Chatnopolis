@@ -47,6 +47,7 @@ DM_RETENTION_DAYS=90       # vida de un mensaje privado. 0 = sin vencimiento
 DM_PAIR_LIMIT=500          # máximo de privados guardados por conversación
 PHOTO_TTL_MINUTES=1440     # vida de una foto en disco (24 h). 0 = sin vencimiento por tiempo
 PHOTO_DISK_LIMIT_MB=500    # techo de la carpeta uploads/. Al llegar, se rechazan subidas nuevas
+PUBLIC_URL=https://chatnopolis.com  # dominio para canonical, vista previa en redes y sitemap.xml
 ```
 
 > **`TRUST_PROXY=1` es importante y es fácil de olvidar.** Con nginx delante, todas las peticiones

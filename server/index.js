@@ -10,7 +10,7 @@ const { setupSocket } = require('./socket');
 const { startCleanupJobs } = require('./cleanup');
 const { UPLOADS_DIR } = require('./uploads');
 const { apiLimiter, TRUST_PROXY } = require('./ratelimit');
-const { CLIENT_DIST, renderPage } = require('./seo');
+const { CLIENT_DIST, renderPage, robotsTxt, sitemapXml } = require('./seo');
 
 const app = express();
 const server = http.createServer(app);
@@ -87,7 +87,12 @@ app.use(
 // a cada ruta su <head> (ver server/seo.js).
 if (fs.existsSync(CLIENT_DIST)) {
   app.use(express.static(CLIENT_DIST, { index: false }));
-  app.get(/^\/(?!api|uploads|socket\.io).*/, (req, res) => res.type('html').send(renderPage(req.path)));
+  app.get('/robots.txt', (req, res) => res.type('text/plain').send(robotsTxt()));
+  app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(sitemapXml()));
+  app.get(/^\/(?!api|uploads|socket\.io).*/, (req, res) => {
+    const { status, html } = renderPage(req.path);
+    res.status(status).type('html').send(html);
+  });
 }
 
 setupSocket(io);
