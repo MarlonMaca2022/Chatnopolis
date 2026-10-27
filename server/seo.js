@@ -156,6 +156,32 @@ function headFor(pathname, found, defaults) {
       const site = { '@context': 'https://schema.org', '@type': 'WebSite', name: ssr.siteName, url: `${PUBLIC_URL}/`, inLanguage: 'es' };
       tags.push(`<script type="application/ld+json">${jsonForScript(site)}</script>`);
     }
+    // Páginas de sala (client/src/lib/roomPages.js): las preguntas de la página, que
+    // ayudan a los buscadores con IA a entenderla y citarla, y la ruta
+    // "Inicio › Chat de Medellín", que Google muestra en el resultado en vez de la URL.
+    if (meta.faq?.length) {
+      const faq = {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: meta.faq.map(({ q, a }) => ({
+          '@type': 'Question',
+          name: q,
+          acceptedAnswer: { '@type': 'Answer', text: a },
+        })),
+      };
+      tags.push(`<script type="application/ld+json">${jsonForScript(faq)}</script>`);
+    }
+    if (meta.breadcrumb) {
+      const crumbs = {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Inicio', item: `${PUBLIC_URL}/` },
+          { '@type': 'ListItem', position: 2, name: meta.breadcrumb, item: url },
+        ],
+      };
+      tags.push(`<script type="application/ld+json">${jsonForScript(crumbs)}</script>`);
+    }
   }
 
   if (ADULT_PATHS.has(pathname)) tags.push(...ADULT_META);
@@ -182,8 +208,8 @@ function renderPage(rawPath) {
   };
 }
 
-// Las páginas que queremos en Google: las prerenderizadas que no llevan noindex.
-// Las páginas por sala se suman acá cuando existan.
+// Las páginas que queremos en Google: las prerenderizadas que no llevan noindex
+// (las de sala incluidas: publicRoutes.jsx las prerenderiza).
 function indexablePaths() {
   const paths = ssr ? [...ssr.prerender] : ['/'];
   return paths.filter((p) => !NOINDEX_PATHS.has(p));
