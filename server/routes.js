@@ -5,7 +5,8 @@ const bcrypt = require('bcryptjs');
 const QRCode = require('qrcode');
 const { users, rooms, guestBans } = require('./db');
 const { signToken, sessionAccount } = require('./auth');
-const { syncMuted, syncProfile, sessionForSocket, revokeSessions } = require('./socket');
+const { syncMuted, syncProfile, sessionForSocket, revokeSessions, onlineNow } = require('./socket');
+const stats = require('./stats');
 const { UPLOADS_DIR, uploadUrl, checkQuota, noteUploaded, removeUploadFile } = require('./uploads');
 const {
   loginLimiter,
@@ -377,6 +378,11 @@ router.delete('/rooms/:id', requireAdmin, (req, res) => {
   rooms.remove(req.params.id);
   req.app.get('io').emit('roomsUpdate', rooms.all());
   res.json({ success: true });
+});
+
+// --- Actividad: cuánta gente entra (solo admin, ver server/stats.js) ---
+router.get('/stats', requireAdmin, (req, res) => {
+  res.json({ online: onlineNow(), days: stats.report() });
 });
 
 // --- Users (solo admin ve la lista completa) ---

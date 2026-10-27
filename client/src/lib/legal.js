@@ -196,7 +196,7 @@ export const LEGAL_PAGES = {
         id: 'resumen',
         heading: 'En pocas palabras',
         paragraphs: [
-          'No vendemos datos, no usamos cookies de seguimiento, no tenemos analítica ni publicidad, y no compartimos nada con terceros.',
+          'No vendemos datos, no usamos cookies de seguimiento, no usamos herramientas de analítica ni publicidad, y no compartimos nada con terceros. Lo único que medimos son totales por día, como cuántas personas entraron, sin guardar quiénes.',
           'Guardamos lo mínimo para que el chat funcione, y casi todo se borra solo al poco tiempo. Abajo está el detalle exacto.',
         ],
       },
@@ -223,6 +223,10 @@ export const LEGAL_PAGES = {
           {
             title: 'Foto de perfil',
             text: 'Si tu cuenta tiene foto de perfil, se guarda como archivo en el servidor y la ve cualquiera que esté en tu sala.',
+          },
+          {
+            title: 'Estadísticas de uso',
+            text: 'Contamos, por día, cuántas personas entraron al chat (separando invitados y cuentas registradas), el máximo de personas conectadas a la vez y cuántos mensajes se enviaron. Se guardan solo esos números: no quién entró, ni a qué hora, ni desde dónde. Para no contar dos veces a la misma persona en un mismo día, el servidor recuerda los nicks que ya entraron, solo en memoria y hasta que termina el día; nunca se escriben en la base de datos.',
           },
         ],
       },
@@ -254,6 +258,10 @@ export const LEGAL_PAGES = {
           {
             title: 'Datos de cuenta',
             text: 'Se conservan mientras la cuenta exista. Si pides la baja, se eliminan.',
+          },
+          {
+            title: 'Estadísticas de uso',
+            text: 'Los totales por día se conservan, porque no identifican a nadie.',
           },
         ],
       },

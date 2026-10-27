@@ -51,6 +51,7 @@ export const api = {
   register: (payload) => request('/register', { method: 'POST', body: payload }),
   createRoom: (name) => request('/rooms', { method: 'POST', body: { name } }),
   deleteRoom: (id) => request(`/rooms/${id}`, { method: 'DELETE' }),
+  getStats: () => request('/stats'),
   getUsers: () => request('/users'),
   unbanUser: (username) => request(`/users/${encodeURIComponent(username)}/unban`, { method: 'POST' }),
   unmuteUser: (username) => request(`/users/${encodeURIComponent(username)}/unmute`, { method: 'POST' }),
