@@ -69,6 +69,14 @@ db.exec(`
     expires_at TEXT,             -- NULL => ban permanente
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Totales por día (server/stats.js). Solo números: ni nicks, ni horas, ni IPs.
+  CREATE TABLE IF NOT EXISTS daily_stats (
+    day TEXT NOT NULL,        -- YYYY-MM-DD en hora de Colombia
+    metric TEXT NOT NULL,
+    value INTEGER NOT NULL,
+    PRIMARY KEY (day, metric)
+  );
 `);
 
 // --- Migraciones para bases de datos ya creadas ---
@@ -516,4 +524,31 @@ const guestBans = {
       }),
 };
 
-module.exports = { db, users, rooms, messages, guestBans };
+// --- Estadísticas de uso (totales por día, ver server/stats.js) ---
+const stats = {
+  add: (day, metric, n = 1) =>
+    db.prepare(
+      `INSERT INTO daily_stats (day, metric, value) VALUES (?, ?, ?)
+       ON CONFLICT (day, metric) DO UPDATE SET value = value + excluded.value`
+    ).run(day, metric, n),
+  // Para los máximos del día: solo pisa si el número nuevo es mayor
+  max: (day, metric, n) =>
+    db.prepare(
+      `INSERT INTO daily_stats (day, metric, value) VALUES (?, ?, ?)
+       ON CONFLICT (day, metric) DO UPDATE SET value = MAX(value, excluded.value)`
+    ).run(day, metric, n),
+  since: (day) =>
+    db.prepare('SELECT day, metric, value FROM daily_stats WHERE day >= ?').all(day),
+  // El primer día con algo contado: lo anterior no es cero, es "no se medía"
+  firstDay: () => db.prepare('SELECT MIN(day) AS day FROM daily_stats').get().day,
+  // Las altas no necesitan contador: users ya guarda la fecha de cada una, así que
+  // salen también para los días anteriores al contador. `shift` lleva created_at
+  // (UTC) a la hora local, p. ej. '-5 hours'.
+  registrationsSince: (day, shift) =>
+    db.prepare(
+      `SELECT date(created_at, ?) AS day, COUNT(*) AS n FROM users
+       WHERE role <> 'admin' GROUP BY 1 HAVING day >= ?`
+    ).all(shift, day),
+};
+
+module.exports = { db, users, rooms, messages, guestBans, stats };

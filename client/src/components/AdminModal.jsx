@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LogOut, Shield, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { clearSession } from '../lib/session';
+import ActivitySection from './ActivitySection';
 
 // "43 min" / "2 h 10 min" / "permanente" — until null significa sin vencimiento
 function formatUntil(until) {
@@ -242,6 +243,8 @@ export default function AdminModal({ onClose }) {
               {error}
             </p>
           )}
+
+          <ActivitySection />
 
           <div>
             <h4 className="text-sm font-bold text-ink-faint uppercase tracking-wider mb-4 border-b border-edge pb-2">

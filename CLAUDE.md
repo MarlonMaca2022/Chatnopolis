@@ -39,6 +39,7 @@ server/
   uploads.js   UPLOADS_DIR + removeUploadFile() (único módulo que borra fotos) + cuotas y techo de disco
   cleanup.js   Poda de historial y barrido de fotos vencidas/huérfanas (startCleanupJobs)
   profile.js   Datos de perfil: GENDERS + validGender()
+  stats.js     Actividad: totales por día (entradas, máximo a la vez, mensajes) para el panel
   seo.js       Todo el HTML de la SPA (renderPage): <head> por ruta + prerender de las páginas públicas
 client/
   src/pages/         HomePage (/, pública), AuthPage (/entrar: invitado/login/registro), ChatPage,
@@ -51,6 +52,7 @@ client/
                      Logo (emblema + texto en SVG, currentColor; LogoMark/LogoWord sueltos),
                      Ghost (el fantasmita del favicon, mascota de la homepage),
                      ProfileModal (Mi perfil: se abre tocando la tarjeta propia al pie del sidebar),
+                     ActivitySection (Actividad, arriba en el AdminModal: gráfico + tabla plegada),
                      PasswordSection (cambiar la contraseña, dentro de Mi perfil; solo registrados)
   src/lib/           api.js (fetch wrapper + uploadPhoto), session.js (token en localStorage),
                      gender.js (textos de cada género; los ids los decide server/profile.js),
@@ -105,6 +107,15 @@ Un invitado no tiene cuenta: **su identidad es el nombre**. De ahí salen tres r
 - **Banear** — duraciones 10 min / 1 h / 4 h / permanente (`BAN_DURATIONS` en `server/socket.js`, validadas server-side). Registrados: `users.is_banned` + `banned_until`. Invitados: fila en `guest_bans` con `expires_at`. En ambos, **`NULL` en la fecha = permanente**. Se banea la **identidad, no la IP** (el proyecto no captura IPs): el ban aguanta las variantes del mismo nombre porque va por canónica (ver *Identidad y nicks*), pero un invitado sigue evadiéndolo si elige un nick **realmente** distinto.
 - **Vencimiento perezoso**: no hay cron ni timers. `users.banStatus()` y `guestBans.status()` evalúan la fecha al leer y borran el registro vencido en el momento. Todo chequeo de ban debe pasar por esos helpers, nunca leer `is_banned` directo.
 - **Desbanear / desilenciar** viven en el `AdminModal` vía REST (`POST /api/users/:u/unban`, `/unmute`, `DELETE /api/guest-bans/:u`), no en la lista de usuarios en línea: un baneado no está conectado. Los invitados baneados tienen su propia sección porque no existen en la tabla `users`.
+
+## Actividad: cuánta gente entra (`server/stats.js`)
+
+Para saber si el chat se usa, sin analítica de terceros. Sección **Actividad** del `AdminModal` (`GET /api/stats`, solo admin).
+
+- **Solo totales por día** en `daily_stats` (`day`, `metric`, `value`): `visits_guest`, `visits_user`, `peak_online`, `messages_room`, `messages_dm`. La base **nunca** guarda quién entró: eso es lo que la política de privacidad promete ("Estadísticas de uso"). Si agregás una métrica que identifique a alguien, cambia la política en el mismo commit.
+- **Una entrada = el primer `join` de una conexión** (cambiar de sala no cuenta). Cada identidad cuenta una vez por día, por canónica: el set de "ya entró hoy" vive **solo en memoria** y se vacía al cambiar el día. Por eso un reinicio (deploy) vuelve a contar a quien entre después ese día, y un invitado con otro nick cuenta como otra persona — límites aceptados para no escribir nombres.
+- **Los admins no cuentan** (ni en entradas ni en `onlineNow()`), para que la moderación no infle los números.
+- **Días en hora de Colombia** (`UTC_OFFSET_HOURS = -5`, sin horario de verano). Los días anteriores al primer conteo van con `null` ("—" en el panel: no se medía, no es cero). Las **cuentas nuevas** no tienen contador: salen de `users.created_at`, así que tienen historia desde el principio.
 
 ## Legales, edad y consentimiento — IMPORTANTE
 

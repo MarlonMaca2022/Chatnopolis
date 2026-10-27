@@ -5,6 +5,7 @@ const { removeUploadFile } = require('./uploads');
 const { canonicalNick, isReservedNick } = require('./nicks');
 const { TERMS_VERSION, CONSENT_REQUIRED, TERMS_OUTDATED } = require('./legal');
 const { validGender } = require('./profile');
+const { recordVisit, recordOnline, recordMessage } = require('./stats');
 const {
   clientIp,
   allowConnection,
@@ -122,6 +123,11 @@ function setupSocket(io) {
 
       usersOnline[socket.id] = { ...me, room: roomId, socketId: socket.id };
       socket.join(roomId);
+      // Una entrada al chat es el primer join de la conexión; cambiar de sala no lo es
+      if (!prev) {
+        recordVisit(me);
+        recordOnline(onlineNow().total);
+      }
 
       // Historial persistido de la sala
       socket.emit('history', {
@@ -159,6 +165,7 @@ function setupSocket(io) {
       const quoted = quotable(socket, replyTo);
       const id = messages.saveRoom(user.room, user.username, cleanText, null, quoted?.id);
       pruneRoom(user.room);
+      recordMessage(false);
       io.to(user.room).emit('message', {
         id,
         username: user.username,
@@ -207,6 +214,7 @@ function setupSocket(io) {
       let quoted = quotable(socket, replyTo);
       if (quoted && !samePair(quoted, user.username, to)) quoted = null;
       const id = messages.saveDM(user.username, to, cleanText || null, cleanImage, quoted?.id);
+      recordMessage(true);
       const data = {
         id,
         username: user.username,
@@ -647,6 +655,18 @@ function sessionForSocket(socketId) {
   return user ? { username: user.username, canon: user.canon, role: user.role, isMuted: !!user.isMuted } : null;
 }
 
+// Personas distintas conectadas ahora, sin contar a los admins (ver server/stats.js).
+// Por identidad, como updateRoomUsers: el celular y la compu de una cuenta son una.
+function onlineNow() {
+  const guests = new Set();
+  const accounts = new Set();
+  Object.values(usersOnline).forEach(({ role, canon }) => {
+    if (role === 'guest') guests.add(canon);
+    else if (role !== 'admin') accounts.add(canon);
+  });
+  return { guests: guests.size, users: accounts.size, total: guests.size + accounts.size };
+}
+
 function updateRoomUsers(io, room) {
   // Una entrada por identidad: una cuenta abierta en el celular y en la compu son
   // dos sockets en la sala, pero es una sola persona (y el cliente usa el nick como key).
@@ -670,4 +690,4 @@ function validImageUrl(url) {
   return typeof url === 'string' && /^\/uploads\/[\w.-]+$/.test(url) ? url : null;
 }
 
-module.exports = { setupSocket, syncMuted, syncProfile, sessionForSocket, revokeSessions };
+module.exports = { setupSocket, syncMuted, syncProfile, sessionForSocket, revokeSessions, onlineNow };
