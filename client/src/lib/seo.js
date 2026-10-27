@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { LEGAL_PAGES } from './legal';
 import { HERO } from './home';
+import { ROOM_PAGES } from './roomPages';
 
 // Título y descripción de cada página. Fuente única: server/seo.js los recibe por
 // el build del servidor (entry-server.jsx) y los escribe en el <head> de cada
@@ -33,6 +34,15 @@ export const PAGE_META = {
     description: 'Entra como invitado con solo un apodo, o con tu cuenta de Chatnopolis.',
   },
   '/chat': { title: SITE_NAME, description: '' },
+  // Páginas de sala (lib/roomPages.js). `faq` y `breadcrumb` los usa server/seo.js
+  // para los datos estructurados: las preguntas de la página y la ruta
+  // "Inicio › Chat de Medellín" que Google muestra en el resultado.
+  ...Object.fromEntries(
+    ROOM_PAGES.map((page) => [
+      page.path,
+      { ...page.meta, faq: page.faq, breadcrumb: `Chat de ${page.name}` },
+    ])
+  ),
 };
 
 // Todas las rutas que existen en la app: cualquier otra es un 404 para el servidor
